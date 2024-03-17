@@ -35,7 +35,7 @@ type ReportActionItemCreatedProps = ReportActionItemCreatedOnyxProps & {
 
     /** The id of the policy */
     // eslint-disable-next-line react/no-unused-prop-types
-    policyID: string;
+    policyID: string | undefined;
 };
 function ReportActionItemCreated(props: ReportActionItemCreatedProps) {
     const styles = useThemeStyles();
@@ -118,6 +118,7 @@ export default withOnyx<ReportActionItemCreatedProps, ReportActionItemCreatedOny
             prevProps.report?.lastReadTime === nextProps.report?.lastReadTime &&
             prevProps.report?.description === nextProps.report?.description &&
             prevProps.personalDetails === nextProps.personalDetails &&
+            prevProps.policy?.description === nextProps.policy?.description &&
             prevProps.report?.reportName === nextProps.report?.reportName,
     ),
 );
