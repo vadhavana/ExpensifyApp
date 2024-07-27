@@ -1,4 +1,4 @@
-import Str from 'expensify-common/lib/str';
+import {Str} from 'expensify-common';
 import React, {useCallback} from 'react';
 import {View} from 'react-native';
 import MultipleAvatars from '@components/MultipleAvatars';
@@ -13,9 +13,9 @@ import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import CONST from '@src/CONST';
 import BaseListItem from './BaseListItem';
-import type {InviteMemberListItemProps} from './types';
+import type {InviteMemberListItemProps, ListItem} from './types';
 
-function InviteMemberListItem({
+function InviteMemberListItem<TItem extends ListItem>({
     item,
     isFocused,
     showTooltip,
@@ -24,9 +24,10 @@ function InviteMemberListItem({
     onSelectRow,
     onCheckboxPress,
     onDismissError,
-    shouldPreventDefaultFocusOnSelectRow,
     rightHandSideComponent,
-}: InviteMemberListItemProps) {
+    onFocus,
+    shouldSyncFocus,
+}: InviteMemberListItemProps<TItem>) {
     const styles = useThemeStyles();
     const theme = useTheme();
     const StyleUtils = useStyleUtils();
@@ -54,7 +55,6 @@ function InviteMemberListItem({
             canSelectMultiple={canSelectMultiple}
             onSelectRow={onSelectRow}
             onDismissError={onDismissError}
-            shouldPreventDefaultFocusOnSelectRow={shouldPreventDefaultFocusOnSelectRow}
             rightHandSideComponent={rightHandSideComponent}
             errors={item.errors}
             pendingAction={item.pendingAction}
@@ -66,6 +66,8 @@ function InviteMemberListItem({
                 ) : undefined
             }
             keyForList={item.keyForList}
+            onFocus={onFocus}
+            shouldSyncFocus={shouldSyncFocus}
         >
             {(hovered?: boolean) => (
                 <>

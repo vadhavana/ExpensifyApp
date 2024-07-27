@@ -1,10 +1,10 @@
 import {useRoute} from '@react-navigation/native';
-import React, {useCallback, useContext, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 // eslint-disable-next-line no-restricted-imports
 import type {GestureResponderEvent, ScrollView as RNScrollView, ScrollViewProps, StyleProp, ViewStyle} from 'react-native';
-import {View} from 'react-native';
+import {NativeModules, View} from 'react-native';
 import type {OnyxCollection, OnyxEntry} from 'react-native-onyx';
-import {withOnyx} from 'react-native-onyx';
+import {useOnyx, withOnyx} from 'react-native-onyx';
 import type {ValueOf} from 'type-fest';
 import AvatarWithImagePicker from '@components/AvatarWithImagePicker';
 import ConfirmModal from '@components/ConfirmModal';
@@ -12,7 +12,6 @@ import CurrentUserPersonalDetailsSkeletonView from '@components/CurrentUserPerso
 import Icon from '@components/Icon';
 import * as Expensicons from '@components/Icon/Expensicons';
 import MenuItem from '@components/MenuItem';
-import OfflineWithFeedback from '@components/OfflineWithFeedback';
 import {PressableWithFeedback} from '@components/Pressable';
 import ScreenWrapper from '@components/ScreenWrapper';
 import {ScrollOffsetContext} from '@components/ScrollOffsetContextProvider';
@@ -21,16 +20,19 @@ import Text from '@components/Text';
 import Tooltip from '@components/Tooltip';
 import type {WithCurrentUserPersonalDetailsProps} from '@components/withCurrentUserPersonalDetails';
 import withCurrentUserPersonalDetails from '@components/withCurrentUserPersonalDetails';
-import useActiveRoute from '@hooks/useActiveRoute';
+import useActiveCentralPaneRoute from '@hooks/useActiveCentralPaneRoute';
 import useLocalize from '@hooks/useLocalize';
 import useNetwork from '@hooks/useNetwork';
 import useSingleExecution from '@hooks/useSingleExecution';
+import useSubscriptionPlan from '@hooks/useSubscriptionPlan';
 import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import useWaitForNavigation from '@hooks/useWaitForNavigation';
 import * as CurrencyUtils from '@libs/CurrencyUtils';
+import {splitTextWithEmojis} from '@libs/EmojiUtils';
+import type {TextWithEmoji} from '@libs/EmojiUtils';
 import Navigation from '@libs/Navigation/Navigation';
-import shouldShowSubscriptionsMenu from '@libs/shouldShowSubscriptionsMenu';
+import * as SubscriptionUtils from '@libs/SubscriptionUtils';
 import * as UserUtils from '@libs/UserUtils';
 import {hasGlobalWorkspaceSettingsRBR} from '@libs/WorkspacesSettingsUtils';
 import * as ReportActionContextMenu from '@pages/home/report/ContextMenu/ReportActionContextMenu';
@@ -71,9 +73,6 @@ type InitialSettingsPageOnyxProps = {
 
     /** The policies which the user has access to */
     policies: OnyxCollection<OnyxTypes.Policy>;
-
-    /** Members of all the workspaces the user is member of */
-    policyMembers: OnyxCollection<OnyxTypes.PolicyMembers>;
 };
 
 type InitialSettingsPageProps = InitialSettingsPageOnyxProps & WithCurrentUserPersonalDetailsProps;
@@ -89,16 +88,18 @@ type MenuData = {
     iconStyles?: StyleProp<ViewStyle>;
     fallbackIcon?: IconAsset;
     shouldStackHorizontally?: boolean;
-    avatarSize?: (typeof CONST.AVATAR_SIZE)[keyof typeof CONST.AVATAR_SIZE];
+    avatarSize?: ValueOf<typeof CONST.AVATAR_SIZE>;
     floatRightAvatars?: TIcon[];
     title?: string;
     shouldShowRightIcon?: boolean;
     iconRight?: IconAsset;
+    badgeText?: string;
+    badgeStyle?: ViewStyle;
 };
 
 type Menu = {sectionStyle: StyleProp<ViewStyle>; sectionTranslationKey: TranslationPaths; items: MenuData[]};
 
-function InitialSettingsPage({session, userWallet, bankAccountList, fundList, walletTerms, loginList, currentUserPersonalDetails, policies, policyMembers}: InitialSettingsPageProps) {
+function InitialSettingsPage({session, userWallet, bankAccountList, fundList, walletTerms, loginList, currentUserPersonalDetails, policies}: InitialSettingsPageProps) {
     const network = useNetwork();
     const theme = useTheme();
     const styles = useThemeStyles();
@@ -106,8 +107,11 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
     const waitForNavigate = useWaitForNavigation();
     const popoverAnchor = useRef(null);
     const {translate, formatPhoneNumber} = useLocalize();
-    const activeRoute = useActiveRoute();
+    const activeCentralPaneRoute = useActiveCentralPaneRoute();
     const emojiCode = currentUserPersonalDetails?.status?.emojiCode ?? '';
+
+    const [privateSubscription] = useOnyx(ONYXKEYS.NVP_PRIVATE_SUBSCRIPTION);
+    const subscriptionPlan = useSubscriptionPlan();
 
     const [shouldShowSignoutConfirmModal, setShouldShowSignoutConfirmModal] = useState(false);
 
@@ -189,7 +193,7 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
                 translationKey: 'common.workspaces',
                 icon: Expensicons.Building,
                 routeName: ROUTES.SETTINGS_WORKSPACES,
-                brickRoadIndicator: hasGlobalWorkspaceSettingsRBR(policies, policyMembers) ? CONST.BRICK_ROAD_INDICATOR_STATUS.ERROR : undefined,
+                brickRoadIndicator: hasGlobalWorkspaceSettingsRBR(policies) ? CONST.BRICK_ROAD_INDICATOR_STATUS.ERROR : undefined,
             },
             {
                 translationKey: 'allSettingsScreen.cardsAndDomains',
@@ -203,16 +207,14 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
             },
         ];
 
-        if (shouldShowSubscriptionsMenu) {
+        if (subscriptionPlan) {
             items.splice(1, 0, {
-                translationKey: 'allSettingsScreen.subscriptions',
-                icon: Expensicons.MoneyBag,
-                action: () => {
-                    Link.openOldDotLink(CONST.OLDDOT_URLS.ADMIN_POLICIES_URL);
-                },
-                shouldShowRightIcon: true,
-                iconRight: Expensicons.NewWindow,
-                link: () => Link.buildOldDotURL(CONST.OLDDOT_URLS.ADMIN_POLICIES_URL),
+                translationKey: 'allSettingsScreen.subscription',
+                icon: Expensicons.CreditCard,
+                routeName: ROUTES.SETTINGS_SUBSCRIPTION,
+                brickRoadIndicator: !!privateSubscription?.errors || SubscriptionUtils.hasSubscriptionRedDotError() ? CONST.BRICK_ROAD_INDICATOR_STATUS.ERROR : undefined,
+                badgeText: SubscriptionUtils.isUserOnFreeTrial() ? translate('subscription.badge.freeTrial', {numOfDays: SubscriptionUtils.calculateRemainingFreeTrialDays()}) : undefined,
+                badgeStyle: SubscriptionUtils.isUserOnFreeTrial() ? styles.badgeSuccess : undefined,
             });
         }
 
@@ -221,7 +223,7 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
             sectionTranslationKey: 'common.workspaces',
             items,
         };
-    }, [policies, policyMembers, styles.workspaceSettingsSectionContainer]);
+    }, [policies, privateSubscription?.errors, styles.badgeSuccess, styles.workspaceSettingsSectionContainer, subscriptionPlan, translate]);
 
     /**
      * Retuns a list of menu items data for general section
@@ -229,40 +231,46 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
      */
     const generalMenuItemsData: Menu = useMemo(() => {
         const signOutTranslationKey = Session.isSupportAuthToken() && Session.hasStashedSession() ? 'initialSettingsPage.restoreStashed' : 'initialSettingsPage.signOut';
+        const commonItems: MenuData[] = [
+            {
+                translationKey: 'initialSettingsPage.help',
+                icon: Expensicons.QuestionMark,
+                action: () => {
+                    Link.openExternalLink(CONST.NEWHELP_URL);
+                },
+                iconRight: Expensicons.NewWindow,
+                shouldShowRightIcon: true,
+                link: CONST.NEWHELP_URL,
+            },
+            {
+                translationKey: 'initialSettingsPage.about',
+                icon: Expensicons.Info,
+                routeName: ROUTES.SETTINGS_ABOUT,
+            },
+            {
+                translationKey: 'initialSettingsPage.aboutPage.troubleshoot',
+                icon: Expensicons.Lightbulb,
+                routeName: ROUTES.SETTINGS_TROUBLESHOOT,
+            },
+            {
+                translationKey: 'sidebarScreen.saveTheWorld',
+                icon: Expensicons.Heart,
+                routeName: ROUTES.SETTINGS_SAVE_THE_WORLD,
+            },
+        ];
+        const signOutItem: MenuData = {
+            translationKey: signOutTranslationKey,
+            icon: Expensicons.Exit,
+            action: () => {
+                signOut(false);
+            },
+        };
         const defaultMenu: Menu = {
             sectionStyle: {
                 ...styles.pt4,
             },
             sectionTranslationKey: 'initialSettingsPage.general',
-            items: [
-                {
-                    translationKey: 'initialSettingsPage.help',
-                    icon: Expensicons.QuestionMark,
-                    action: () => {
-                        Link.openExternalLink(CONST.NEWHELP_URL);
-                    },
-                    iconRight: Expensicons.NewWindow,
-                    shouldShowRightIcon: true,
-                    link: CONST.NEWHELP_URL,
-                },
-                {
-                    translationKey: 'initialSettingsPage.about',
-                    icon: Expensicons.Info,
-                    routeName: ROUTES.SETTINGS_ABOUT,
-                },
-                {
-                    translationKey: 'sidebarScreen.saveTheWorld',
-                    icon: Expensicons.Heart,
-                    routeName: ROUTES.SETTINGS_SAVE_THE_WORLD,
-                },
-                {
-                    translationKey: signOutTranslationKey,
-                    icon: Expensicons.Exit,
-                    action: () => {
-                        signOut(false);
-                    },
-                },
-            ],
+            items: NativeModules.HybridAppModule ? commonItems : [...commonItems, signOutItem],
         };
 
         return defaultMenu;
@@ -314,7 +322,8 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
                                     }
                                 })}
                                 iconStyles={item.iconStyles}
-                                badgeText={getWalletBalance(isPaymentItem)}
+                                badgeText={item.badgeText ?? getWalletBalance(isPaymentItem)}
+                                badgeStyle={item.badgeStyle}
                                 fallbackIcon={item.fallbackIcon}
                                 brickRoadIndicator={item.brickRoadIndicator}
                                 floatRightAvatars={item.floatRightAvatars}
@@ -322,9 +331,13 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
                                 floatRightAvatarSize={item.avatarSize}
                                 ref={popoverAnchor}
                                 hoverAndPressStyle={styles.hoveredComponentBG}
-                                shouldBlockSelection={Boolean(item.link)}
+                                shouldBlockSelection={!!item.link}
                                 onSecondaryInteraction={item.link ? (event) => openPopover(item.link, event) : undefined}
-                                focused={!!activeRoute && !!item.routeName && !!(activeRoute.toLowerCase().replaceAll('_', '') === item.routeName.toLowerCase().replaceAll('/', ''))}
+                                focused={
+                                    !!activeCentralPaneRoute &&
+                                    !!item.routeName &&
+                                    !!(activeCentralPaneRoute.name.toLowerCase().replaceAll('_', '') === item.routeName.toLowerCase().replaceAll('/', ''))
+                                }
                                 isPaneMenu
                                 iconRight={item.iconRight}
                                 shouldShowRightIcon={item.shouldShowRightIcon}
@@ -344,7 +357,7 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
             userWallet?.currentBalance,
             isExecuting,
             singleExecution,
-            activeRoute,
+            activeCentralPaneRoute,
             waitForNavigate,
         ],
     );
@@ -353,9 +366,16 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
     const generalMenuItems = useMemo(() => getMenuItemsSection(generalMenuItemsData), [generalMenuItemsData, getMenuItemsSection]);
     const workspaceMenuItems = useMemo(() => getMenuItemsSection(workspaceMenuItemsData), [workspaceMenuItemsData, getMenuItemsSection]);
 
-    const currentUserDetails = currentUserPersonalDetails;
-    const avatarURL = currentUserDetails?.avatar ?? '';
-    const accountID = currentUserDetails?.accountID ?? '';
+    const avatarURL = currentUserPersonalDetails?.avatar ?? '';
+    const accountID = currentUserPersonalDetails?.accountID ?? '-1';
+
+    const processedTextArray: TextWithEmoji[] = useMemo(() => {
+        const doesUsernameContainEmojis = CONST.REGEX.EMOJIS.test(currentUserPersonalDetails?.displayName ?? '');
+        if (!doesUsernameContainEmojis) {
+            return [];
+        }
+        return splitTextWithEmojis(currentUserPersonalDetails?.displayName ?? '');
+    }, [currentUserPersonalDetails?.displayName]);
 
     const headerContent = (
         <View style={[styles.avatarSectionWrapperSettings, styles.justifyContentCenter, styles.ph5, styles.pb5]}>
@@ -403,13 +423,11 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
                             </PressableWithFeedback>
                         </Tooltip>
                     </View>
-                    <OfflineWithFeedback
-                        pendingAction={currentUserPersonalDetails?.pendingFields?.avatar ?? undefined}
-                        style={[styles.mb3, styles.w100]}
-                    >
+                    <View style={[styles.mb3, styles.w100]}>
                         <AvatarWithImagePicker
-                            isUsingDefaultAvatar={UserUtils.isDefaultAvatar(currentUserDetails?.avatar ?? '')}
-                            source={UserUtils.getAvatar(avatarURL, accountID)}
+                            isUsingDefaultAvatar={UserUtils.isDefaultAvatar(currentUserPersonalDetails?.avatar ?? '')}
+                            source={avatarURL}
+                            avatarID={accountID}
                             onImageSelected={PersonalDetails.updateAvatar}
                             onImageRemoved={PersonalDetails.deleteAvatar}
                             size={CONST.AVATAR_SIZE.XLARGE}
@@ -420,19 +438,28 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
                             onErrorClose={PersonalDetails.clearAvatarErrors}
                             onViewPhotoPress={() => Navigation.navigate(ROUTES.PROFILE_AVATAR.getRoute(String(accountID)))}
                             previewSource={UserUtils.getFullSizeAvatar(avatarURL, accountID)}
-                            originalFileName={currentUserDetails.originalFileName}
+                            originalFileName={currentUserPersonalDetails.originalFileName}
                             headerTitle={translate('profilePage.profileAvatar')}
-                            fallbackIcon={currentUserDetails?.fallbackIcon}
+                            fallbackIcon={currentUserPersonalDetails?.fallbackIcon}
                             editIconStyle={styles.smallEditIconAccount}
                         />
-                    </OfflineWithFeedback>
-                    <Text
-                        style={[styles.textHeadline, styles.pre, styles.textAlignCenter]}
-                        numberOfLines={1}
-                    >
-                        {currentUserPersonalDetails.displayName ? currentUserPersonalDetails.displayName : formatPhoneNumber(session?.email ?? '')}
-                    </Text>
-                    {Boolean(currentUserPersonalDetails.displayName) && (
+                    </View>
+                    {processedTextArray.length !== 0 ? (
+                        <Text
+                            style={[styles.textHeadline, styles.pre, styles.textAlignCenter]}
+                            numberOfLines={1}
+                        >
+                            {processedTextArray.map(({text, isEmoji}) => (isEmoji ? <Text style={styles.initialSettingsUsernameEmoji}>{text}</Text> : text))}
+                        </Text>
+                    ) : (
+                        <Text
+                            style={[styles.textHeadline, styles.pre, styles.textAlignCenter]}
+                            numberOfLines={1}
+                        >
+                            {currentUserPersonalDetails.displayName ? currentUserPersonalDetails.displayName : formatPhoneNumber(session?.email ?? '')}
+                        </Text>
+                    )}
+                    {!!currentUserPersonalDetails.displayName && (
                         <Text
                             style={[styles.textLabelSupporting, styles.mt1, styles.w100, styles.textAlignCenter]}
                             numberOfLines={1}
@@ -461,18 +488,13 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
         [route, saveScrollOffset],
     );
 
-    const [isAfterOnLayout, setIsAfterOnLayout] = useState(false);
-
-    const onLayout = useCallback(() => {
+    useLayoutEffect(() => {
         const scrollOffset = getScrollOffset(route);
-        setIsAfterOnLayout(true);
         if (!scrollOffset || !scrollViewRef.current) {
             return;
         }
         scrollViewRef.current.scrollTo({y: scrollOffset, animated: false});
     }, [getScrollOffset, route]);
-
-    const scrollOffset = getScrollOffset(route);
 
     return (
         <ScreenWrapper
@@ -483,12 +505,9 @@ function InitialSettingsPage({session, userWallet, bankAccountList, fundList, wa
         >
             <ScrollView
                 ref={scrollViewRef}
-                onLayout={onLayout}
                 onScroll={onScroll}
                 scrollEventThrottle={16}
-                // We use marginTop to prevent glitching on the initial frame that renders before scrollTo.
-                contentContainerStyle={[!isAfterOnLayout && !!scrollOffset && {marginTop: -scrollOffset}]}
-                style={[styles.w100, styles.pt4]}
+                contentContainerStyle={[styles.w100, styles.pt4]}
             >
                 {headerContent}
                 {accountMenuItems}
@@ -533,9 +552,6 @@ export default withCurrentUserPersonalDetails(
         },
         policies: {
             key: ONYXKEYS.COLLECTION.POLICY,
-        },
-        policyMembers: {
-            key: ONYXKEYS.COLLECTION.POLICY_MEMBERS,
         },
     })(InitialSettingsPage),
 );

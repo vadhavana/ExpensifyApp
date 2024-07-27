@@ -2,26 +2,30 @@ import React from 'react';
 import {View} from 'react-native';
 import TextWithTooltip from '@components/TextWithTooltip';
 import useThemeStyles from '@hooks/useThemeStyles';
+import variables from '@styles/variables';
 import CONST from '@src/CONST';
 import BaseListItem from './BaseListItem';
-import type {RadioListItemProps} from './types';
+import type {ListItem, RadioListItemProps} from './types';
 
-function RadioListItem({
+function RadioListItem<TItem extends ListItem>({
     item,
     isFocused,
     showTooltip,
     isDisabled,
     onSelectRow,
     onDismissError,
-    shouldPreventDefaultFocusOnSelectRow,
+    shouldPreventEnterKeySubmit,
     rightHandSideComponent,
     isMultilineSupported = false,
+    isAlternateTextMultilineSupported = false,
     onFocus,
-}: RadioListItemProps) {
+    shouldSyncFocus,
+}: RadioListItemProps<TItem>) {
     const styles = useThemeStyles();
     const fullTitle = isMultilineSupported ? item.text?.trimStart() : item.text;
     const indentsLength = (item.text?.length ?? 0) - (fullTitle?.length ?? 0);
     const paddingLeft = Math.floor(indentsLength / CONST.INDENTS.length) * styles.ml3.marginLeft;
+    const alternateTextMaxWidth = variables.sideBarWidth - styles.ph5.paddingHorizontal * 2 - styles.ml3.marginLeft - variables.iconSizeNormal;
 
     return (
         <BaseListItem
@@ -32,12 +36,15 @@ function RadioListItem({
             showTooltip={showTooltip}
             onSelectRow={onSelectRow}
             onDismissError={onDismissError}
-            shouldPreventDefaultFocusOnSelectRow={shouldPreventDefaultFocusOnSelectRow}
+            shouldPreventEnterKeySubmit={shouldPreventEnterKeySubmit}
             rightHandSideComponent={rightHandSideComponent}
             keyForList={item.keyForList}
             onFocus={onFocus}
+            shouldSyncFocus={shouldSyncFocus}
+            pendingAction={item.pendingAction}
         >
             <>
+                {!!item.leftElement && item.leftElement}
                 <View style={[styles.flex1, styles.alignItemsStart]}>
                     <TextWithTooltip
                         shouldShowTooltip={showTooltip}
@@ -58,7 +65,13 @@ function RadioListItem({
                         <TextWithTooltip
                             shouldShowTooltip={showTooltip}
                             text={item.alternateText}
-                            style={[styles.textLabelSupporting, styles.lh16, styles.pre]}
+                            style={[
+                                styles.textLabelSupporting,
+                                styles.lh16,
+                                isAlternateTextMultilineSupported ? styles.preWrap : styles.pre,
+                                isAlternateTextMultilineSupported ? {maxWidth: alternateTextMaxWidth} : null,
+                            ]}
+                            numberOfLines={isAlternateTextMultilineSupported ? 2 : 1}
                         />
                     )}
                 </View>

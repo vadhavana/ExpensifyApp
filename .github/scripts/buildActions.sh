@@ -27,6 +27,7 @@ declare -r GITHUB_ACTIONS=(
     "$ACTIONS_DIR/validateReassureOutput/validateReassureOutput.ts"
     "$ACTIONS_DIR/getGraphiteString/getGraphiteString.ts"
     "$ACTIONS_DIR/getArtifactInfo/getArtifactInfo.ts"
+    "$ACTIONS_DIR/proposalPoliceComment/proposalPoliceComment.ts"
 )
 
 # This will be inserted at the top of all compiled files as a warning to devs.
@@ -43,7 +44,7 @@ for ((i=0; i < ${#GITHUB_ACTIONS[@]}; i++)); do
   ACTION_DIR=$(dirname "$ACTION")
 
   # Build the action in the background
-  ncc build -t "$ACTION" -o "$ACTION_DIR" &
+  npx ncc build --transpile-only --external encoding "$ACTION" -o "$ACTION_DIR" &
   ASYNC_BUILDS[i]=$!
 done
 

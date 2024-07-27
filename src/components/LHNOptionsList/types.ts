@@ -6,35 +6,8 @@ import type {ValueOf} from 'type-fest';
 import type CONST from '@src/CONST';
 import type {OptionData} from '@src/libs/ReportUtils';
 import type {Locale, PersonalDetailsList, Policy, Report, ReportAction, ReportActions, Transaction, TransactionViolation} from '@src/types/onyx';
-import type {EmptyObject} from '@src/types/utils/EmptyObject';
 
 type OptionMode = ValueOf<typeof CONST.OPTION_MODE>;
-
-type LHNOptionsListOnyxProps = {
-    /** The policy which the user has access to and which the report could be tied to */
-    policy: OnyxCollection<Policy>;
-
-    /** All reports shared with the user */
-    reports: OnyxCollection<Report>;
-
-    /** Array of report actions for this report */
-    reportActions: OnyxCollection<ReportActions>;
-
-    /** Indicates which locale the user currently has selected */
-    preferredLocale: OnyxEntry<Locale>;
-
-    /** List of users' personal details */
-    personalDetails: OnyxEntry<PersonalDetailsList>;
-
-    /** The transaction from the parent report action */
-    transactions: OnyxCollection<Transaction>;
-
-    /** List of draft comments */
-    draftComments: OnyxCollection<string>;
-
-    /** The list of transaction violations */
-    transactionViolations: OnyxCollection<TransactionViolation[]>;
-};
 
 type CustomLHNOptionsListProps = {
     /** Wrapper style for the section list */
@@ -59,7 +32,7 @@ type CustomLHNOptionsListProps = {
     onFirstItemRendered: () => void;
 };
 
-type LHNOptionsListProps = CustomLHNOptionsListProps & LHNOptionsListOnyxProps;
+type LHNOptionsListProps = CustomLHNOptionsListProps;
 
 type OptionRowLHNDataProps = {
     /** Whether row should be focused */
@@ -84,7 +57,7 @@ type OptionRowLHNDataProps = {
     transaction: OnyxEntry<Transaction>;
 
     /** The transaction linked to the report's last action */
-    lastReportActionTransaction?: OnyxEntry<Transaction | EmptyObject>;
+    lastReportActionTransaction?: OnyxEntry<Transaction>;
 
     /** Whether a report contains a draft */
     hasDraftComment: boolean;
@@ -97,6 +70,9 @@ type OptionRowLHNDataProps = {
 
     /** Array of report actions for this report */
     reportActions: OnyxEntry<ReportActions>;
+
+    /** Array of report actions of IOU report related to this report last action */
+    iouReportReportActions: OnyxEntry<ReportActions>;
 
     /** List of transaction violation */
     transactionViolations: OnyxCollection<TransactionViolation[]>;
@@ -141,4 +117,4 @@ type OptionRowLHNProps = {
 
 type RenderItemProps = {item: string};
 
-export type {LHNOptionsListProps, OptionRowLHNDataProps, OptionRowLHNProps, LHNOptionsListOnyxProps, RenderItemProps};
+export type {LHNOptionsListProps, OptionRowLHNDataProps, OptionRowLHNProps, RenderItemProps};

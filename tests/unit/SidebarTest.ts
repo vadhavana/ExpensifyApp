@@ -1,5 +1,6 @@
-import {cleanup, screen} from '@testing-library/react-native';
+import {screen} from '@testing-library/react-native';
 import Onyx from 'react-native-onyx';
+import DateUtils from '@libs/DateUtils';
 import CONST from '@src/CONST';
 import * as Localize from '@src/libs/Localize';
 import ONYXKEYS from '@src/ONYXKEYS';
@@ -12,6 +13,7 @@ import wrapOnyxWithWaitForBatchedUpdates from '../utils/wrapOnyxWithWaitForBatch
 // Be sure to include the mocked Permissions and Expensicons libraries as well as the usePermissions hook or else the beta tests won't work
 jest.mock('@src/libs/Permissions');
 jest.mock('@src/hooks/usePermissions.ts');
+jest.mock('@src/hooks/useActiveWorkspaceFromNavigationState');
 jest.mock('@src/components/Icon/Expensicons');
 
 describe('Sidebar', () => {
@@ -31,7 +33,6 @@ describe('Sidebar', () => {
 
     // Clear out Onyx after each test so that each test starts with a clean slate
     afterEach(() => {
-        cleanup();
         Onyx.clear();
     });
 
@@ -42,6 +43,9 @@ describe('Sidebar', () => {
                 chatType: CONST.REPORT.CHAT_TYPE.POLICY_ROOM,
                 statusNum: CONST.REPORT.STATUS_NUM.CLOSED,
                 stateNum: CONST.REPORT.STATE_NUM.APPROVED,
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                private_isArchived: DateUtils.getDBTime(),
+                lastMessageText: 'test',
             };
 
             const action = {
@@ -54,9 +58,9 @@ describe('Sidebar', () => {
 
             // Given the user is in all betas
             const betas = [CONST.BETAS.DEFAULT_ROOMS];
-            LHNTestUtils.getDefaultRenderedSidebarLinks('0');
             return (
                 waitForBatchedUpdates()
+                    .then(() => LHNTestUtils.getDefaultRenderedSidebarLinks('0'))
                     // When Onyx is updated with the data and the sidebar re-renders
                     .then(() => {
                         const reportCollection: ReportCollectionDataSet = {
@@ -79,11 +83,11 @@ describe('Sidebar', () => {
                     .then(() => {
                         const hintText = Localize.translateLocal('accessibilityHints.chatUserDisplayNames');
                         const displayNames = screen.queryAllByLabelText(hintText);
-                        expect(displayNames[0].props.children[0]).toBe('Report (archived)');
+                        expect(displayNames[0]).toHaveTextContent('Report (archived)');
 
                         const hintMessagePreviewText = Localize.translateLocal('accessibilityHints.lastChatMessagePreview');
                         const messagePreviewTexts = screen.queryAllByLabelText(hintMessagePreviewText);
-                        expect(messagePreviewTexts[0].props.children).toBe('This chat room has been archived.');
+                        expect(messagePreviewTexts[0]).toHaveTextContent('This chat room has been archived.');
                     })
             );
         });
@@ -94,6 +98,9 @@ describe('Sidebar', () => {
                 chatType: CONST.REPORT.CHAT_TYPE.POLICY_ROOM,
                 statusNum: CONST.REPORT.STATUS_NUM.CLOSED,
                 stateNum: CONST.REPORT.STATE_NUM.APPROVED,
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                private_isArchived: DateUtils.getDBTime(),
+                lastMessageText: 'test',
             };
             const action = {
                 ...LHNTestUtils.getFakeReportAction('email1@test.com', 3),
@@ -106,9 +113,9 @@ describe('Sidebar', () => {
 
             // Given the user is in all betas
             const betas = [CONST.BETAS.DEFAULT_ROOMS];
-            LHNTestUtils.getDefaultRenderedSidebarLinks('0');
             return (
                 waitForBatchedUpdates()
+                    .then(() => LHNTestUtils.getDefaultRenderedSidebarLinks('0'))
                     // When Onyx is updated with the data and the sidebar re-renders
                     .then(() => {
                         const reportCollection: ReportCollectionDataSet = {
@@ -131,11 +138,11 @@ describe('Sidebar', () => {
                     .then(() => {
                         const hintText = Localize.translateLocal('accessibilityHints.chatUserDisplayNames');
                         const displayNames = screen.queryAllByLabelText(hintText);
-                        expect(displayNames[0].props.children[0]).toBe('Report (archived)');
+                        expect(displayNames[0]).toHaveTextContent('Report (archived)');
 
                         const hintMessagePreviewText = Localize.translateLocal('accessibilityHints.lastChatMessagePreview');
                         const messagePreviewTexts = screen.queryAllByLabelText(hintMessagePreviewText);
-                        expect(messagePreviewTexts[0].props.children).toBe('This chat is no longer active because Vikings Policy is no longer an active workspace.');
+                        expect(messagePreviewTexts[0]).toHaveTextContent('This chat is no longer active because Vikings Policy is no longer an active workspace.');
                     })
             );
         });

@@ -42,6 +42,11 @@ function BaseHTMLEngineProvider({textSelectable = false, children, enableExperim
                 mixedUAStyles: {...styles.colorMuted, ...styles.mb0},
                 contentModel: HTMLContentModel.block,
             }),
+            'muted-text-label': HTMLElementModel.fromCustomModel({
+                tagName: 'muted-text-label',
+                mixedUAStyles: {...styles.mutedNormalTextLabel, ...styles.mb0},
+                contentModel: HTMLContentModel.block,
+            }),
             comment: HTMLElementModel.fromCustomModel({
                 tagName: 'comment',
                 mixedUAStyles: {whiteSpace: 'pre'},
@@ -77,8 +82,13 @@ function BaseHTMLEngineProvider({textSelectable = false, children, enableExperim
                 mixedUAStyles: {...styles.textSupporting, ...styles.textLineThrough},
                 contentModel: HTMLContentModel.textual,
             }),
+            'uploading-attachment': HTMLElementModel.fromCustomModel({
+                tagName: 'uploading-attachment',
+                mixedUAStyles: {...styles.mt4},
+                contentModel: HTMLContentModel.block,
+            }),
         }),
-        [styles.formError, styles.mb0, styles.colorMuted, styles.textLabelSupporting, styles.lh16, styles.textSupporting, styles.textLineThrough],
+        [styles.formError, styles.mb0, styles.colorMuted, styles.textLabelSupporting, styles.lh16, styles.textSupporting, styles.textLineThrough, styles.mt4, styles.mutedNormalTextLabel],
     );
     /* eslint-enable @typescript-eslint/naming-convention */
 
@@ -91,7 +101,10 @@ function BaseHTMLEngineProvider({textSelectable = false, children, enableExperim
             baseStyle={styles.webViewStyles.baseFontStyle}
             tagsStyles={styles.webViewStyles.tagStyles}
             enableCSSInlineProcessing={false}
-            systemFonts={Object.values(FontUtils.fontFamily.single)}
+            systemFonts={Object.values(FontUtils.fontFamily.single).map((font) => font.fontFamily)}
+            htmlParserOptions={{
+                recognizeSelfClosing: true,
+            }}
             domVisitors={{
                 // eslint-disable-next-line no-param-reassign
                 onText: (text) => (text.data = convertToLTR(text.data)),
