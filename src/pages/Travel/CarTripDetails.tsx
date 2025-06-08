@@ -22,9 +22,15 @@ function CarTripDetails({reservation, personalDetails}: CarTripDetailsProps) {
 
     const pickUpDate = DateUtils.getFormattedTransportDateAndHour(new Date(reservation.start.date));
     const dropOffDate = DateUtils.getFormattedTransportDateAndHour(new Date(reservation.end.date));
-    const cancellationText = reservation.cancellationDeadline
-        ? `${translate('travel.carDetails.cancellationUntil')} ${DateUtils.getFormattedTransportDateAndHour(new Date(reservation.cancellationDeadline)).date}`
-        : reservation.cancellationPolicy;
+
+    let cancellationText = reservation.cancellationPolicy;
+    if (reservation.cancellationDeadline) {
+        cancellationText = `${translate('travel.carDetails.cancellationUntil')} ${DateUtils.getFormattedCancellationDate(new Date(reservation.cancellationDeadline))}`;
+    }
+
+    if (reservation.cancellationPolicy === null && reservation.cancellationDeadline === null) {
+        cancellationText = translate('travel.carDetails.freeCancellation');
+    }
 
     const displayName = personalDetails?.displayName ?? reservation.travelerPersonalInfo?.name;
 
@@ -65,13 +71,14 @@ function CarTripDetails({reservation, personalDetails}: CarTripDetailsProps) {
                     description={translate('travel.carDetails.cancellation')}
                     title={cancellationText}
                     interactive={false}
+                    numberOfLinesTitle={2}
                 />
             )}
             {!!reservation.reservationID && (
                 <MenuItemWithTopDescription
                     description={translate('travel.carDetails.confirmation')}
                     title={reservation.reservationID}
-                    interactive={false}
+                    copyValue={reservation.reservationID}
                 />
             )}
             {!!displayName && (

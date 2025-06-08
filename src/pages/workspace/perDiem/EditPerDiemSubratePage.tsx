@@ -14,7 +14,7 @@ import type {PlatformStackScreenProps} from '@libs/Navigation/PlatformStackNavig
 import {getPerDiemCustomUnit} from '@libs/PolicyUtils';
 import type {SettingsNavigatorParamList} from '@navigation/types';
 import AccessOrNotFoundWrapper from '@pages/workspace/AccessOrNotFoundWrapper';
-import * as PerDiem from '@userActions/Policy/PerDiem';
+import {editPerDiemRateSubrate} from '@userActions/Policy/PerDiem';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import ROUTES from '@src/ROUTES';
@@ -43,8 +43,12 @@ function EditPerDiemSubratePage({route}: EditPerDiemSubratePageProps) {
         (values: FormOnyxValues<typeof ONYXKEYS.FORMS.WORKSPACE_PER_DIEM_FORM>): FormInputErrors<typeof ONYXKEYS.FORMS.WORKSPACE_PER_DIEM_FORM> => {
             const errors: FormInputErrors<typeof ONYXKEYS.FORMS.WORKSPACE_PER_DIEM_FORM> = {};
 
-            if (!values.subrate.trim()) {
+            const subrateTrimmed = values.subrate.trim();
+
+            if (!subrateTrimmed) {
                 errors.subrate = translate('common.error.fieldRequired');
+            } else if (subrateTrimmed.length > CONST.MAX_LENGTH_256) {
+                errors.subrate = translate('common.error.characterLimitExceedCounter', {length: subrateTrimmed.length, limit: CONST.MAX_LENGTH_256});
             }
 
             return errors;
@@ -56,7 +60,7 @@ function EditPerDiemSubratePage({route}: EditPerDiemSubratePageProps) {
         (values: FormOnyxValues<typeof ONYXKEYS.FORMS.WORKSPACE_PER_DIEM_FORM>) => {
             const newSubrate = values.subrate.trim();
             if (newSubrate !== selectedSubrate?.name) {
-                PerDiem.editPerDiemRateSubrate(policyID, rateID, subRateID, customUnit, newSubrate);
+                editPerDiemRateSubrate(policyID, rateID, subRateID, customUnit, newSubrate);
             }
             Navigation.goBack(ROUTES.WORKSPACE_PER_DIEM_DETAILS.getRoute(policyID, rateID, subRateID));
         },
@@ -71,13 +75,13 @@ function EditPerDiemSubratePage({route}: EditPerDiemSubratePageProps) {
             shouldBeBlocked={!policyID || !rateID || isEmptyObject(selectedRate) || isEmptyObject(selectedSubrate)}
         >
             <ScreenWrapper
-                includeSafeAreaPaddingBottom
+                enableEdgeToEdgeBottomSafeAreaPadding
                 style={[styles.defaultModalContainer]}
                 testID={EditPerDiemSubratePage.displayName}
                 shouldEnableMaxHeight
             >
                 <HeaderWithBackButton
-                    title={translate('workspace.perDiem.subrate')}
+                    title={translate('common.subrate')}
                     onBackButtonPress={() => Navigation.goBack(ROUTES.WORKSPACE_PER_DIEM_DETAILS.getRoute(policyID, rateID, subRateID))}
                 />
                 <FormProvider
@@ -87,16 +91,17 @@ function EditPerDiemSubratePage({route}: EditPerDiemSubratePageProps) {
                     submitButtonText={translate('common.save')}
                     style={[styles.mh5, styles.flex1]}
                     enabledWhenOffline
+                    shouldHideFixErrorsAlert
+                    addBottomSafeAreaPadding
                 >
                     <InputWrapper
                         ref={inputCallbackRef}
                         InputComponent={TextInput}
                         defaultValue={selectedSubrate?.name}
-                        label={translate('workspace.perDiem.subrate')}
-                        accessibilityLabel={translate('workspace.perDiem.subrate')}
+                        label={translate('common.subrate')}
+                        accessibilityLabel={translate('common.subrate')}
                         inputID={INPUT_IDS.SUBRATE}
                         role={CONST.ROLE.PRESENTATION}
-                        maxLength={CONST.MAX_LENGTH_256}
                     />
                 </FormProvider>
             </ScreenWrapper>

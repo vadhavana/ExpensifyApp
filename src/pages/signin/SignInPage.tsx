@@ -13,14 +13,14 @@ import useResponsiveLayout from '@hooks/useResponsiveLayout';
 import useSafeAreaInsets from '@hooks/useSafeAreaInsets';
 import useStyleUtils from '@hooks/useStyleUtils';
 import useThemeStyles from '@hooks/useThemeStyles';
-import * as ActiveClientManager from '@libs/ActiveClientManager';
-import * as Localize from '@libs/Localize';
+import {isClientTheLeader as isClientTheLeaderActiveClientManager} from '@libs/ActiveClientManager';
+import {getDevicePreferredLocale} from '@libs/Localize';
 import Log from '@libs/Log';
 import Navigation from '@libs/Navigation/Navigation';
 import Performance from '@libs/Performance';
 import Visibility from '@libs/Visibility';
-import * as App from '@userActions/App';
-import * as Session from '@userActions/Session';
+import {setLocale} from '@userActions/App';
+import {clearSignInData} from '@userActions/Session';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import ROUTES from '@src/ROUTES';
@@ -30,6 +30,7 @@ import ChooseSSOOrMagicCode from './ChooseSSOOrMagicCode';
 import EmailDeliveryFailurePage from './EmailDeliveryFailurePage';
 import LoginForm from './LoginForm';
 import type {InputHandle} from './LoginForm/types';
+import {LoginProvider} from './SignInLoginContext';
 import SignInPageLayout from './SignInPageLayout';
 import type {SignInPageLayoutRef} from './SignInPageLayout/types';
 import SignUpWelcomeForm from './SignUpWelcomeForm';
@@ -68,6 +69,7 @@ type GetRenderOptionsParams = {
     hasInitiatedSAMLLogin: boolean;
     shouldShowAnotherLoginPageOpenedMessage: boolean;
     credentials: OnyxEntry<Credentials>;
+    isAccountValidated?: boolean;
 };
 
 /**
@@ -89,6 +91,7 @@ function getRenderOptions({
     hasInitiatedSAMLLogin,
     shouldShowAnotherLoginPageOpenedMessage,
     credentials,
+    isAccountValidated,
 }: GetRenderOptionsParams): RenderOption {
     const hasAccount = !isEmptyObject(account);
     const isSAMLEnabled = !!account?.isSAMLEnabled;
@@ -104,15 +107,15 @@ function getRenderOptions({
     // case we want to clear their sign in data so they don't end up in an infinite loop redirecting back to their
     // SSO provider's login page
     if (hasLogin && isSAMLRequired && !shouldInitiateSAMLLogin && !hasInitiatedSAMLLogin && !account.isLoading) {
-        Session.clearSignInData();
+        clearSignInData();
     }
 
     // Show the Welcome form if a user is signing up for a new account in a domain that is not controlled
-    const shouldShouldSignUpWelcomeForm = !!credentials?.login && !account?.validated && !account?.accountExists && !account?.domainControlled;
+    const shouldShouldSignUpWelcomeForm = !!credentials?.login && !isAccountValidated && !account?.accountExists && !account?.domainControlled;
     const shouldShowLoginForm = !shouldShowAnotherLoginPageOpenedMessage && !hasLogin && !hasValidateCode;
     const shouldShowEmailDeliveryFailurePage = hasLogin && hasEmailDeliveryFailure && !shouldShowChooseSSOOrMagicCode && !shouldInitiateSAMLLogin;
-    const shouldShowSMSDeliveryFailurePage = hasLogin && hasSMSDeliveryFailure && !shouldShowChooseSSOOrMagicCode && !shouldInitiateSAMLLogin;
-    const isUnvalidatedSecondaryLogin = hasLogin && !isPrimaryLogin && !account?.validated && !hasEmailDeliveryFailure && !hasSMSDeliveryFailure;
+    const shouldShowSMSDeliveryFailurePage = !!(hasLogin && hasSMSDeliveryFailure && !shouldShowChooseSSOOrMagicCode && !shouldInitiateSAMLLogin && account?.accountExists);
+    const isUnvalidatedSecondaryLogin = hasLogin && !isPrimaryLogin && !isAccountValidated && !hasEmailDeliveryFailure && !hasSMSDeliveryFailure;
     const shouldShowValidateCodeForm =
         !shouldShouldSignUpWelcomeForm &&
         hasAccount &&
@@ -150,17 +153,18 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
     const loginFormRef = useRef<InputHandle>(null);
     const validateCodeFormRef = useRef<BaseValidateCodeFormRef>(null);
 
-    const [account] = useOnyx(ONYXKEYS.ACCOUNT);
-    const [credentials] = useOnyx(ONYXKEYS.CREDENTIALS);
+    const [account] = useOnyx(ONYXKEYS.ACCOUNT, {canBeMissing: true});
+    const isAccountValidated = account?.validated;
+    const [credentials] = useOnyx(ONYXKEYS.CREDENTIALS, {canBeMissing: true});
     /**
       This variable is only added to make sure the component is re-rendered
       whenever the activeClients change, so that we call the
       ActiveClientManager.isClientTheLeader function
-      everytime the leader client changes.
+      every time the leader client changes.
       We use that function to prevent repeating code that checks which client is the leader.
     */
-    const [activeClients = []] = useOnyx(ONYXKEYS.ACTIVE_CLIENTS);
-    const [preferredLocale] = useOnyx(ONYXKEYS.NVP_PREFERRED_LOCALE);
+    const [activeClients = []] = useOnyx(ONYXKEYS.ACTIVE_CLIENTS, {canBeMissing: true});
+    const [preferredLocale] = useOnyx(ONYXKEYS.NVP_PREFERRED_LOCALE, {canBeMissing: true});
 
     /** This state is needed to keep track of if user is using recovery code instead of 2fa code,
      * and we need it here since welcome text(`welcomeText`) also depends on it */
@@ -174,9 +178,7 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
      *  if we need to clear their sign in details so they can enter a login */
     const [hasInitiatedSAMLLogin, setHasInitiatedSAMLLogin] = useState(false);
 
-    const [login, setLogin] = useState(() => Str.removeSMSDomain(credentials?.login ?? ''));
-
-    const isClientTheLeader = !!activeClients && ActiveClientManager.isClientTheLeader();
+    const isClientTheLeader = !!activeClients && isClientTheLeaderActiveClientManager();
     // We need to show "Another login page is opened" message if the page isn't active and visible
     // eslint-disable-next-line rulesdir/no-negated-variables
     const shouldShowAnotherLoginPageOpenedMessage = Visibility.isVisible() && !isClientTheLeader;
@@ -186,7 +188,7 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
         if (preferredLocale) {
             return;
         }
-        App.setLocale(Localize.getDevicePreferredLocale());
+        setLocale(getDevicePreferredLocale());
     }, [preferredLocale]);
     useEffect(() => {
         if (credentials?.login) {
@@ -222,6 +224,7 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
         hasInitiatedSAMLLogin,
         shouldShowAnotherLoginPageOpenedMessage,
         credentials,
+        isAccountValidated,
     });
 
     if (shouldInitiateSAMLLogin) {
@@ -282,7 +285,7 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
             (!shouldShowAnotherLoginPageOpenedMessage &&
                 (shouldShowEmailDeliveryFailurePage || shouldShowUnlinkLoginForm || shouldShowChooseSSOOrMagicCode || shouldShowSMSDeliveryFailurePage))
         ) {
-            Session.clearSignInData();
+            clearSignInData();
             return;
         }
 
@@ -302,8 +305,8 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
         <ScreenWrapper
             shouldShowOfflineIndicator={false}
             shouldEnableMaxHeight={shouldEnableMaxHeight}
-            style={[styles.signInPage, StyleUtils.getSafeAreaPadding({...safeAreaInsets, bottom: 0, top: isInNarrowPaneModal ? 0 : safeAreaInsets.top}, 1)]}
-            testID={SignInPageThemeWrapper.displayName}
+            style={[styles.signInPage, StyleUtils.getPlatformSafeAreaPadding({...safeAreaInsets, bottom: 0, top: isInNarrowPaneModal ? 0 : safeAreaInsets.top}, 1)]}
+            testID={SignInPageWrapper.displayName}
         >
             <SignInPageLayout
                 welcomeHeader={welcomeHeader}
@@ -318,9 +321,7 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
                 <LoginForm
                     ref={loginFormRef}
                     isVisible={shouldShowLoginForm}
-                    login={login}
-                    onLoginChanged={setLogin}
-                    blurOnSubmit={account?.validated === false}
+                    blurOnSubmit={isAccountValidated === false}
                     // eslint-disable-next-line react-compiler/react-compiler
                     scrollPageToTop={signInPageLayoutRef.current?.scrollPageToTop}
                 />
@@ -349,25 +350,27 @@ function SignInPage({shouldEnableMaxHeight = true}: SignInPageInnerProps, ref: F
 type SignInPageProps = SignInPageInnerProps;
 const SignInPageWithRef = forwardRef(SignInPage);
 
-function SignInPageThemeWrapper(props: SignInPageProps, ref: ForwardedRef<SignInPageRef>) {
+function SignInPageWrapper(props: SignInPageProps, ref: ForwardedRef<SignInPageRef>) {
     return (
         <ThemeProvider theme={CONST.THEME.DARK}>
             <ThemeStylesProvider>
                 <ColorSchemeWrapper>
                     <CustomStatusBarAndBackground isNested />
-                    <SignInPageWithRef
-                        ref={ref}
-                        // eslint-disable-next-line react/jsx-props-no-spreading
-                        {...props}
-                    />
+                    <LoginProvider>
+                        <SignInPageWithRef
+                            ref={ref}
+                            // eslint-disable-next-line react/jsx-props-no-spreading
+                            {...props}
+                        />
+                    </LoginProvider>
                 </ColorSchemeWrapper>
             </ThemeStylesProvider>
         </ThemeProvider>
     );
 }
 
-SignInPageThemeWrapper.displayName = 'SignInPage';
+SignInPageWrapper.displayName = 'SignInPage';
 
-export default forwardRef(SignInPageThemeWrapper);
+export default forwardRef(SignInPageWrapper);
 
 export type {SignInPageRef};

@@ -34,18 +34,19 @@ When creating RHP flows, you have to remember a couple of things:
 
 - We use a custom `goBack` function to handle the browser and the `react-navigation` history stack. Under the hood, it resolves to either replacing the current screen with the one we navigate to (deeplinking scenario) or just going back if we reached the current page by navigating in App (pops the screen). It ensures the requested behaviors on web, which is navigating back to the place from where you deeplinked when going into the RHP flow by it.
 
-- If you want to navigate to a certain report after completing a flow related to it, e.g. `RequestMoney` flow with a certain group/user, you should use `Navigation.dismissModal` with this `reportID` as an argument. If, in the future, we would like to navigate to something different than the report after such flows, the API should be rather easy to change. We do it like that in order to replace the RHP flow with the new report instead of pushing it, so pressing the back button does not navigate back to the ending page of the flow. If we were to navigate to the same report, we just pop the RHP modal.
+- If you want to navigate to a certain report after completing a flow related to it, e.g. `RequestMoney` flow with a certain group/user, you should use `Navigation.dismissModalWithReport` with this `reportID` as an argument. If, in the future, we would like to navigate to something different than the report after such flows, the API should be rather easy to change. We do it like that in order to replace the RHP flow with the new report instead of pushing it, so pressing the back button does not navigate back to the ending page of the flow. If we were to navigate to the same report, we just pop the RHP modal.
 
 ### Example of usage
 
-An example of adding `Settings_Workspaces` page:
+An example of adding `Settings_Display_Name` page:
 
 1. Add the page name to `SCREENS.ts` which will be reused throughout the app (linkingConfig, navigators, etc.):
-    
 ```ts
 const SCREENS = {
     SETTINGS: {
-        WORKSPACES: 'Settings_Workspaces',
+        PROFILE:{
+            DISPLAY_NAME: 'Settings_Display_Name'
+        }
     },
 } as const;
 ```
@@ -55,21 +56,21 @@ const SCREENS = {
 ```ts
 export const ROUTES = {
     // static route
-    SETTINGS_WORKSPACES: 'settings/workspaces',
+    SETTINGS_DISPLAY_NAME: 'settings/profile/display-name',
     // dynamic route
-    SETTINGS_WORKSPACES: {
-        route: 'settings/:accountID',
-        getRoute: (accountID: number) => `settings/${accountID}` as const,
+    SETTINGS_DISPLAY_NAME: {
+        route: 'settings/profile/:accountID',
+        getRoute: (accountID: number) => `settings/profile/${accountID}` as const,
     },
 };
 
 ```
 
-3. Add `Settings_Workspaces` page to proper RHP flow in `linkingConfig.ts`: https://github.com/Expensify/App/blob/fbc11ca729ffa4676fb3bc8cd110ac3890debff6/src/libs/Navigation/linkingConfig.ts#L47-L50
+3. Add `Settings_Display_Name` page to proper RHP flow in `linkingConfig.ts`: https://github.com/Expensify/App/blob/fbc11ca729ffa4676fb3bc8cd110ac3890debff6/src/libs/Navigation/linkingConfig.ts#L143-L145
 
-4. Add your page to proper navigator (it should be aligned with where you've put it in the previous step) https://github.com/Expensify/App/blob/fbc11ca729ffa4676fb3bc8cd110ac3890debff6/src/libs/Navigation/AppNavigator/ModalStackNavigators.js#L141
+4. Add your page to proper navigator (it should be aligned with where you've put it in the previous step) https://github.com/Expensify/App/blob/7f840a5dc810bda4e06b48a4c14093699ad0251c/src/libs/Navigation/AppNavigator/ModalStackNavigators/index.tsx#L262
 
-5. Make sure `HeaderWithBackButton` leads to the previous page in navigation flow of your page: https://github.com/Expensify/App/blob/3531af22dcadaa94ed11eccf370517dca0b8c305/src/pages/workspace/WorkspacesListPage.js#L186
+5. Make sure `HeaderWithBackButton` leads to the previous page in navigation flow of your page: https://github.com/Expensify/App/blob/3531af22dcadaa94ed11eccf370517dca0b8c305/src/pages/settings/Profile/DisplayNamePage.js#L80
 
 ## Performance solutions
 

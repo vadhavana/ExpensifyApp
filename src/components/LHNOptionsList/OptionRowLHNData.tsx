@@ -1,7 +1,6 @@
 import {deepEqual} from 'fast-equals';
 import React, {useMemo, useRef} from 'react';
 import useCurrentReportID from '@hooks/useCurrentReportID';
-import * as ReportUtils from '@libs/ReportUtils';
 import SidebarUtils from '@libs/SidebarUtils';
 import CONST from '@src/CONST';
 import type {OptionData} from '@src/libs/ReportUtils';
@@ -17,6 +16,9 @@ import type {OptionRowLHNDataProps} from './types';
 function OptionRowLHNData({
     isFocused = false,
     fullReport,
+    reportAttributes,
+    oneTransactionThreadReport,
+    reportNameValuePairs,
     reportActions,
     personalDetails = {},
     preferredLocale = CONST.LOCALES.DEFAULT,
@@ -35,24 +37,18 @@ function OptionRowLHNData({
     const currentReportIDValue = useCurrentReportID();
     const isReportFocused = isFocused && currentReportIDValue?.currentReportID === reportID;
 
-    const optionItemRef = useRef<OptionData>();
-
-    const shouldDisplayViolations = ReportUtils.shouldDisplayViolationsRBRInLHN(fullReport, transactionViolations);
-    const isSettled = ReportUtils.isSettled(fullReport);
-    const shouldDisplayReportViolations = !isSettled && ReportUtils.isReportOwner(fullReport) && ReportUtils.hasReportViolations(reportID);
-
+    const optionItemRef = useRef<OptionData | undefined>(undefined);
     const optionItem = useMemo(() => {
         // Note: ideally we'd have this as a dependent selector in onyx!
         const item = SidebarUtils.getOptionData({
             report: fullReport,
-            reportActions,
+            reportAttributes,
+            oneTransactionThreadReport,
+            reportNameValuePairs,
             personalDetails,
-            preferredLocale: preferredLocale ?? CONST.LOCALES.DEFAULT,
             policy,
             parentReportAction,
-            hasViolations: !!shouldDisplayViolations || shouldDisplayReportViolations,
             lastMessageTextFromReport,
-            transactionViolations,
             invoiceReceiverPolicy,
         });
         // eslint-disable-next-line react-compiler/react-compiler
@@ -70,6 +66,10 @@ function OptionRowLHNData({
         // eslint-disable-next-line react-compiler/react-compiler, react-hooks/exhaustive-deps
     }, [
         fullReport,
+        reportAttributes?.brickRoadStatus,
+        reportAttributes?.reportName,
+        oneTransactionThreadReport,
+        reportNameValuePairs,
         lastReportActionTransaction,
         reportActions,
         personalDetails,
@@ -78,11 +78,10 @@ function OptionRowLHNData({
         parentReportAction,
         iouReportReportActions,
         transaction,
-        transactionViolations,
         receiptTransactions,
         invoiceReceiverPolicy,
-        shouldDisplayReportViolations,
         lastMessageTextFromReport,
+        reportAttributes,
     ]);
 
     return (
@@ -91,6 +90,7 @@ function OptionRowLHNData({
             {...propsToForward}
             isFocused={isReportFocused}
             optionItem={optionItem}
+            report={fullReport}
         />
     );
 }

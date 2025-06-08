@@ -1,14 +1,14 @@
-import {NativeModules} from 'react-native';
+import HybridAppModule from '@expensify/react-native-hybrid-app';
 import Onyx from 'react-native-onyx';
-import type {OnyxUpdate} from 'react-native-onyx';
+import type {OnyxEntry, OnyxUpdate} from 'react-native-onyx';
 import * as API from '@libs/API';
 import type {AddDelegateParams, RemoveDelegateParams, UpdateDelegateRoleParams} from '@libs/API/parameters';
-import {SIDE_EFFECT_REQUEST_COMMANDS, WRITE_COMMANDS} from '@libs/API/types';
+import {READ_COMMANDS, SIDE_EFFECT_REQUEST_COMMANDS, WRITE_COMMANDS} from '@libs/API/types';
 import * as ErrorUtils from '@libs/ErrorUtils';
 import Log from '@libs/Log';
 import * as NetworkStore from '@libs/Network/NetworkStore';
-import {getCurrentUserEmail} from '@libs/Network/NetworkStore';
 import * as SequentialQueue from '@libs/Network/SequentialQueue';
+import CONFIG from '@src/CONFIG';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import type {Delegate, DelegatedAccess, DelegateRole} from '@src/types/onyx/Account';
@@ -16,6 +16,7 @@ import type Credentials from '@src/types/onyx/Credentials';
 import type Response from '@src/types/onyx/Response';
 import type Session from '@src/types/onyx/Session';
 import {confirmReadyToOpenApp, openApp} from './App';
+import {getCurrentUserAccountID} from './Report';
 import updateSessionAuthTokens from './Session/updateSessionAuthTokens';
 import updateSessionUser from './Session/updateSessionUser';
 
@@ -51,6 +52,14 @@ Onyx.connect({
     callback: (value) => (stashedSession = value ?? {}),
 });
 
+let activePolicyID: OnyxEntry<string>;
+Onyx.connect({
+    key: ONYXKEYS.NVP_ACTIVE_POLICY_ID,
+    callback: (newActivePolicyID) => {
+        activePolicyID = newActivePolicyID;
+    },
+});
+
 const KEYS_TO_PRESERVE_DELEGATE_ACCESS = [
     ONYXKEYS.NVP_TRY_FOCUS_MODE,
     ONYXKEYS.PREFERRED_THEME,
@@ -58,20 +67,27 @@ const KEYS_TO_PRESERVE_DELEGATE_ACCESS = [
     ONYXKEYS.SESSION,
     ONYXKEYS.STASHED_SESSION,
     ONYXKEYS.IS_LOADING_APP,
+    ONYXKEYS.HAS_LOADED_APP,
     ONYXKEYS.STASHED_CREDENTIALS,
 
-    // We need to preserve the sidebar loaded state since we never unrender the sidebar when connecting as a delegate
+    // We need to preserve the sidebar loaded state since we never unmount the sidebar when connecting as a delegate
     // This allows the report screen to load correctly when the delegate token expires and the delegate is returned to their original account.
     ONYXKEYS.IS_SIDEBAR_LOADED,
 ];
 
-function connect(email: string) {
-    if (!delegatedAccess?.delegators) {
+/**
+ * Connects the user as a delegate to another account.
+ * Returns a Promise that resolves to true on success, false on failure, or undefined if not applicable.
+ */
+function connect(email: string, isFromOldDot = false) {
+    if (!delegatedAccess?.delegators && !isFromOldDot) {
         return;
     }
 
     Onyx.set(ONYXKEYS.STASHED_CREDENTIALS, credentials);
     Onyx.set(ONYXKEYS.STASHED_SESSION, session);
+
+    const previousAccountID = getCurrentUserAccountID();
 
     const optimisticData: OnyxUpdate[] = [
         {
@@ -123,13 +139,21 @@ function connect(email: string) {
 
     // We need to access the authToken directly from the response to update the session
     // eslint-disable-next-line rulesdir/no-api-side-effects-method
-    API.makeRequestWithSideEffects(SIDE_EFFECT_REQUEST_COMMANDS.CONNECT_AS_DELEGATE, {to: email}, {optimisticData, successData, failureData})
+    return API.makeRequestWithSideEffects(SIDE_EFFECT_REQUEST_COMMANDS.CONNECT_AS_DELEGATE, {to: email}, {optimisticData, successData, failureData})
         .then((response) => {
             if (!response?.restrictedToken || !response?.encryptedAuthToken) {
                 Log.alert('[Delegate] No auth token returned while connecting as a delegate');
                 Onyx.update(failureData);
                 return;
             }
+            if (!activePolicyID && CONFIG.IS_HYBRID_APP) {
+                Log.alert('[Delegate] Unable to access activePolicyID');
+                Onyx.update(failureData);
+                return;
+            }
+            const restrictedToken = response.restrictedToken;
+            const policyID = activePolicyID;
+
             return SequentialQueue.waitForIdle()
                 .then(() => Onyx.clear(KEYS_TO_PRESERVE_DELEGATE_ACCESS))
                 .then(() => {
@@ -138,14 +162,24 @@ function connect(email: string) {
 
                     NetworkStore.setAuthToken(response?.restrictedToken ?? null);
                     confirmReadyToOpenApp();
-                    openApp();
-
-                    NativeModules.HybridAppModule.switchAccount(email);
+                    return openApp().then(() => {
+                        if (!CONFIG.IS_HYBRID_APP || !policyID) {
+                            return true;
+                        }
+                        HybridAppModule.switchAccount({
+                            newDotCurrentAccountEmail: email,
+                            authToken: restrictedToken,
+                            policyID,
+                            accountID: String(previousAccountID),
+                        });
+                        return true;
+                    });
                 });
         })
         .catch((error) => {
             Log.alert('[Delegate] Error connecting as delegate', {error});
             Onyx.update(failureData);
+            return false;
         });
 }
 
@@ -192,25 +226,49 @@ function disconnect() {
         .then((response) => {
             if (!response?.authToken || !response?.encryptedAuthToken) {
                 Log.alert('[Delegate] No auth token returned while disconnecting as a delegate');
+                restoreDelegateSession(stashedSession);
                 return;
             }
 
+            if (!response?.requesterID || !response?.requesterEmail) {
+                Log.alert('[Delegate] No requester data returned while disconnecting as a delegate');
+                restoreDelegateSession(stashedSession);
+                return;
+            }
+
+            const requesterEmail = response.requesterEmail;
+            const authToken = response.authToken;
             return SequentialQueue.waitForIdle()
                 .then(() => Onyx.clear(KEYS_TO_PRESERVE_DELEGATE_ACCESS))
                 .then(() => {
-                    // Update authToken in Onyx and in our local variables so that API requests will use the new authToken
-                    updateSessionAuthTokens(response?.authToken, response?.encryptedAuthToken);
+                    Onyx.set(ONYXKEYS.CREDENTIALS, {
+                        ...stashedCredentials,
+                        accountID: response.requesterID,
+                    });
+                    Onyx.set(ONYXKEYS.SESSION, {
+                        ...stashedSession,
+                        accountID: response.requesterID,
+                        email: requesterEmail,
+                        authToken,
+                        encryptedAuthToken: response.encryptedAuthToken,
+                    });
+                    Onyx.set(ONYXKEYS.STASHED_CREDENTIALS, {});
+                    Onyx.set(ONYXKEYS.STASHED_SESSION, {});
 
                     NetworkStore.setAuthToken(response?.authToken ?? null);
 
-                    Onyx.set(ONYXKEYS.CREDENTIALS, stashedCredentials);
-                    Onyx.set(ONYXKEYS.SESSION, stashedSession);
-                    Onyx.set(ONYXKEYS.STASHED_CREDENTIALS, {});
-                    Onyx.set(ONYXKEYS.STASHED_SESSION, {});
                     confirmReadyToOpenApp();
-                    openApp();
-
-                    NativeModules.HybridAppModule.switchAccount(getCurrentUserEmail() ?? '');
+                    openApp().then(() => {
+                        if (!CONFIG.IS_HYBRID_APP) {
+                            return;
+                        }
+                        HybridAppModule.switchAccount({
+                            newDotCurrentAccountEmail: requesterEmail,
+                            authToken,
+                            policyID: '',
+                            accountID: '',
+                        });
+                    });
                 });
         })
         .catch((error) => {
@@ -471,18 +529,6 @@ function isConnectedAsDelegate() {
     return !!delegatedAccess?.delegate;
 }
 
-function removePendingDelegate(email: string) {
-    if (!delegatedAccess?.delegates) {
-        return;
-    }
-
-    Onyx.merge(ONYXKEYS.ACCOUNT, {
-        delegatedAccess: {
-            delegates: delegatedAccess.delegates.filter((delegate) => delegate.email !== email),
-        },
-    });
-}
-
 function updateDelegateRole(email: string, role: DelegateRole, validateCode: string) {
     if (!delegatedAccess?.delegates) {
         return;
@@ -503,10 +549,9 @@ function updateDelegateRole(email: string, role: DelegateRole, validateCode: str
                         delegate.email === email
                             ? {
                                   ...delegate,
-                                  role,
+                                  isLoading: true,
                                   pendingAction: CONST.RED_BRICK_ROAD_PENDING_ACTION.UPDATE,
                                   pendingFields: {role: CONST.RED_BRICK_ROAD_PENDING_ACTION.UPDATE},
-                                  isLoading: true,
                               }
                             : delegate,
                     ),
@@ -531,9 +576,9 @@ function updateDelegateRole(email: string, role: DelegateRole, validateCode: str
                             ? {
                                   ...delegate,
                                   role,
+                                  isLoading: false,
                                   pendingAction: null,
                                   pendingFields: {role: null},
-                                  isLoading: false,
                               }
                             : delegate,
                     ),
@@ -643,6 +688,10 @@ function restoreDelegateSession(authenticateResponse: Response) {
     });
 }
 
+function openSecuritySettingsPage() {
+    API.read(READ_COMMANDS.OPEN_SECURITY_SETTINGS_PAGE, null);
+}
+
 export {
     connect,
     disconnect,
@@ -650,12 +699,12 @@ export {
     addDelegate,
     requestValidationCode,
     clearDelegateErrorsByField,
-    removePendingDelegate,
     restoreDelegateSession,
     isConnectedAsDelegate,
     updateDelegateRoleOptimistically,
     clearDelegateRolePendingAction,
     updateDelegateRole,
     removeDelegate,
+    openSecuritySettingsPage,
     KEYS_TO_PRESERVE_DELEGATE_ACCESS,
 };

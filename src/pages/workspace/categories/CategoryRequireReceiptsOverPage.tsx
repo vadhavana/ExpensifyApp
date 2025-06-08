@@ -45,7 +45,7 @@ function CategoryRequireReceiptsOverPage({
 
     const isAlwaysSelected = policyCategories?.[categoryName]?.maxAmountNoReceipt === 0;
     const isNeverSelected = policyCategories?.[categoryName]?.maxAmountNoReceipt === CONST.DISABLED_MAX_EXPENSE_VALUE;
-    const maxExpenseAmountToDisplay = policy?.maxExpenseAmount === CONST.DISABLED_MAX_EXPENSE_VALUE ? 0 : policy?.maxExpenseAmount;
+    const maxExpenseAmountToDisplay = policy?.maxExpenseAmountNoReceipt === CONST.DISABLED_MAX_EXPENSE_VALUE ? 0 : policy?.maxExpenseAmountNoReceipt;
 
     const requireReceiptsOverListData = [
         {
@@ -79,7 +79,7 @@ function CategoryRequireReceiptsOverPage({
             featureName={CONST.POLICY.MORE_FEATURES.ARE_CATEGORIES_ENABLED}
         >
             <ScreenWrapper
-                includeSafeAreaPaddingBottom={false}
+                enableEdgeToEdgeBottomSafeAreaPadding
                 style={[styles.defaultModalContainer]}
                 testID={CategoryRequireReceiptsOverPage.displayName}
                 shouldEnableMaxHeight
@@ -102,6 +102,7 @@ function CategoryRequireReceiptsOverPage({
                     shouldSingleExecuteRowSelect
                     containerStyle={[styles.pt3]}
                     initiallyFocusedOptionKey={initiallyFocusedOptionKey}
+                    addBottomSafeAreaPadding
                 />
             </ScreenWrapper>
         </AccessOrNotFoundWrapper>
