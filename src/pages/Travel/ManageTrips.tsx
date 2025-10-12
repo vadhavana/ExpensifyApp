@@ -1,4 +1,6 @@
-import React from 'react';
+import React, {useCallback, useRef, useState} from 'react';
+// eslint-disable-next-line no-restricted-imports
+import type {ScrollView as RNScrollView} from 'react-native';
 import {Linking, View} from 'react-native';
 import BookTravelButton from '@components/BookTravelButton';
 import Button from '@components/Button';
@@ -28,13 +30,29 @@ function ManageTrips() {
     const styles = useThemeStyles();
     const {shouldUseNarrowLayout} = useResponsiveLayout();
     const {translate} = useLocalize();
+    const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
 
     const navigateToBookTravelDemo = () => {
         Linking.openURL(CONST.BOOK_TRAVEL_DEMO_URL);
     };
 
+    const scrollViewRef = useRef<RNScrollView>(null);
+
+    const handleOnContentSizeChange = useCallback(() => {
+        if (!shouldScrollToBottom) {
+            return;
+        }
+
+        scrollViewRef.current?.scrollToEnd({animated: true});
+        setShouldScrollToBottom(false);
+    }, [shouldScrollToBottom]);
+
     return (
-        <ScrollView contentContainerStyle={styles.pt3}>
+        <ScrollView
+            contentContainerStyle={styles.pt3}
+            ref={scrollViewRef}
+            onContentSizeChange={handleOnContentSizeChange}
+        >
             <View style={[styles.flex1, shouldUseNarrowLayout ? styles.workspaceSectionMobile : styles.workspaceSection]}>
                 <FeatureList
                     menuItems={tripsFeatures}
@@ -57,6 +75,7 @@ function ManageTrips() {
                             <BookTravelButton
                                 text={translate('travel.bookTravel')}
                                 shouldRenderErrorMessageBelowButton
+                                setShouldScrollToBottom={setShouldScrollToBottom}
                             />
                         </>
                     }

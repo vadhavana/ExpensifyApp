@@ -3,6 +3,7 @@ import Onyx from 'react-native-onyx';
 import * as API from '@libs/API';
 import type {
     ConnectPolicyToQuickBooksDesktopParams,
+    UpdateQuickbooksDesktopAccountingMethodParams,
     UpdateQuickbooksDesktopCompanyCardExpenseAccountTypeParams,
     UpdateQuickbooksDesktopExpensesExportDestinationTypeParams,
     UpdateQuickbooksDesktopGenericTypeParams,
@@ -85,11 +86,15 @@ function buildOnyxDataForQuickbooksExportConfiguration<TSettingName extends keyo
     settingValue: Partial<Connections['quickbooksDesktop']['config']['export'][TSettingName]>,
     oldSettingValue?: Partial<Connections['quickbooksDesktop']['config']['export'][TSettingName]>,
 ) {
+    const exporterOptimisticData = settingName === CONST.QUICKBOOKS_CONFIG.EXPORTER ? {exporter: settingValue} : {};
+    const exporterErrorData = settingName === CONST.QUICKBOOKS_CONFIG.EXPORTER ? {exporter: oldSettingValue} : {};
+
     const optimisticData: OnyxUpdate[] = [
         {
             onyxMethod: Onyx.METHOD.MERGE,
             key: `${ONYXKEYS.COLLECTION.POLICY}${policyID}`,
             value: {
+                ...exporterOptimisticData,
                 connections: {
                     [CONST.POLICY.CONNECTIONS.NAME.QBD]: {
                         config: {
@@ -114,6 +119,7 @@ function buildOnyxDataForQuickbooksExportConfiguration<TSettingName extends keyo
             onyxMethod: Onyx.METHOD.MERGE,
             key: `${ONYXKEYS.COLLECTION.POLICY}${policyID}`,
             value: {
+                ...exporterErrorData,
                 connections: {
                     [CONST.POLICY.CONNECTIONS.NAME.QBD]: {
                         config: {
@@ -533,8 +539,23 @@ function updateQuickbooksDesktopAutoSync<TSettingValue extends Connections['quic
     API.write(WRITE_COMMANDS.UPDATE_QUICKBOOKS_DESKTOP_AUTO_SYNC, parameters, onyxData);
 }
 
+function updateQuickbooksDesktopAccountingMethod<TSettingValue extends Connections['quickbooksDesktop']['config']['export']['accountingMethod']>(
+    policyID: string,
+    settingValue: TSettingValue,
+    oldSettingValue?: TSettingValue,
+) {
+    const onyxData = buildOnyxDataForQuickbooksExportConfiguration(policyID, CONST.QUICKBOOKS_DESKTOP_CONFIG.ACCOUNTING_METHOD, settingValue, oldSettingValue);
+
+    const parameters: UpdateQuickbooksDesktopAccountingMethodParams = {
+        policyID,
+        accountingMethod: settingValue,
+    };
+    API.write(WRITE_COMMANDS.UPDATE_QUICKBOOKS_DESKTOP_ACCOUNTING_METHOD, parameters, onyxData);
+}
+
 export {
     updateQuickbooksDesktopAutoSync,
+    updateQuickbooksDesktopAccountingMethod,
     updateQuickbooksDesktopPreferredExporter,
     updateQuickbooksDesktopMarkChecksToBePrinted,
     updateQuickbooksDesktopNonReimbursableBillDefaultVendor,

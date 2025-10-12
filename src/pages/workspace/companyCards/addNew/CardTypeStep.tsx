@@ -1,19 +1,20 @@
 import React, {useEffect, useState} from 'react';
 import {View} from 'react-native';
 import type {StyleProp, ViewStyle} from 'react-native';
-import {useOnyx} from 'react-native-onyx';
 import FormHelpMessage from '@components/FormHelpMessage';
 import HeaderWithBackButton from '@components/HeaderWithBackButton';
 import Icon from '@components/Icon';
 import * as Illustrations from '@components/Icon/Illustrations';
 import type {LocaleContextProps} from '@components/LocaleContextProvider';
 import ScreenWrapper from '@components/ScreenWrapper';
-import SelectionList from '@components/SelectionList';
-import RadioListItem from '@components/SelectionList/RadioListItem';
+import SelectionList from '@components/SelectionListWithSections';
+import RadioListItem from '@components/SelectionListWithSections/RadioListItem';
 import Text from '@components/Text';
 import useLocalize from '@hooks/useLocalize';
+import useOnyx from '@hooks/useOnyx';
 import usePermissions from '@hooks/usePermissions';
 import useThemeStyles from '@hooks/useThemeStyles';
+import {isPlaidSupportedCountry} from '@libs/CardUtils';
 import variables from '@styles/variables';
 import {setAddNewCompanyCardStepAndData} from '@userActions/CompanyCards';
 import CONST from '@src/CONST';
@@ -93,6 +94,7 @@ function CardTypeStep() {
     const {bankName, selectedBank, feedType} = addNewCard?.data ?? {};
     const isOtherBankSelected = selectedBank === CONST.COMPANY_CARDS.BANKS.OTHER;
     const isNewCardTypeSelected = typeSelected !== feedType;
+    const doesCountrySupportPlaid = isPlaidSupportedCountry(addNewCard?.data.selectedCountry);
 
     const submit = () => {
         if (!typeSelected) {
@@ -116,6 +118,10 @@ function CardTypeStep() {
     const handleBackButtonPress = () => {
         if (isOtherBankSelected) {
             setAddNewCompanyCardStepAndData({step: CONST.COMPANY_CARDS.STEP.SELECT_BANK});
+            return;
+        }
+        if (isBetaEnabled(CONST.BETAS.PLAID_COMPANY_CARDS) && !doesCountrySupportPlaid) {
+            setAddNewCompanyCardStepAndData({step: CONST.COMPANY_CARDS.STEP.SELECT_COUNTRY});
             return;
         }
         setAddNewCompanyCardStepAndData({step: CONST.COMPANY_CARDS.STEP.SELECT_FEED_TYPE});

@@ -1,6 +1,5 @@
 import React, {useMemo} from 'react';
 import {View} from 'react-native';
-import {useOnyx} from 'react-native-onyx';
 import Button from '@components/Button';
 import ButtonWithDropdownMenu from '@components/ButtonWithDropdownMenu';
 import FeedSelector from '@components/FeedSelector';
@@ -10,6 +9,8 @@ import Text from '@components/Text';
 import TextLink from '@components/TextLink';
 import useCardFeeds from '@hooks/useCardFeeds';
 import useLocalize from '@hooks/useLocalize';
+import useOnyx from '@hooks/useOnyx';
+import usePolicy from '@hooks/usePolicy';
 import useResponsiveLayout from '@hooks/useResponsiveLayout';
 import useStyleUtils from '@hooks/useStyleUtils';
 import useTheme from '@hooks/useTheme';
@@ -25,16 +26,19 @@ import {
     getCompanyFeeds,
     getCustomOrFormattedFeedName,
     getDomainOrWorkspaceAccountID,
+    getPlaidCountry,
     getPlaidInstitutionIconUrl,
     getPlaidInstitutionId,
     isCustomFeed,
 } from '@libs/CardUtils';
 import Navigation from '@navigation/Navigation';
-import {setAssignCardStepAndData} from '@userActions/CompanyCards';
+import {setAddNewCompanyCardStepAndData, setAssignCardStepAndData} from '@userActions/CompanyCards';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import ROUTES from '@src/ROUTES';
-import type {CompanyCardFeed} from '@src/types/onyx';
+import type {CompanyCardFeed, CurrencyList} from '@src/types/onyx';
+import type {AssignCardData} from '@src/types/onyx/AssignCard';
+import {getEmptyObject} from '@src/types/utils/EmptyObject';
 
 type WorkspaceCompanyCardsListHeaderButtonsProps = {
     /** Current policy id */
@@ -59,7 +63,10 @@ function WorkspaceCompanyCardsListHeaderButtons({policyID, selectedFeed, shouldS
     const {shouldUseNarrowLayout, isMediumScreenWidth} = useResponsiveLayout();
     const workspaceAccountID = useWorkspaceAccountID(policyID);
     const [cardFeeds] = useCardFeeds(policyID);
+    const policy = usePolicy(policyID);
     const [allFeedsCards] = useOnyx(`${ONYXKEYS.COLLECTION.WORKSPACE_CARDS_LIST}`, {canBeMissing: false});
+    const [currencyList = getEmptyObject<CurrencyList>()] = useOnyx(ONYXKEYS.CURRENCY_LIST, {canBeMissing: true});
+    const [countryByIp] = useOnyx(ONYXKEYS.COUNTRY, {canBeMissing: false});
     const shouldChangeLayout = isMediumScreenWidth || shouldUseNarrowLayout;
     const formattedFeedName = getCustomOrFormattedFeedName(selectedFeed, cardFeeds?.settings?.companyCardNicknames);
     const isCommercialFeed = isCustomFeed(selectedFeed);
@@ -73,13 +80,26 @@ function WorkspaceCompanyCardsListHeaderButtons({policyID, selectedFeed, shouldS
 
     const openBankConnection = () => {
         const institutionId = !!getPlaidInstitutionId(selectedFeed);
+        const data: Partial<AssignCardData> = {
+            bankName: selectedFeed,
+        };
         if (institutionId) {
-            setAssignCardStepAndData({currentStep: CONST.COMPANY_CARD.STEP.PLAID_CONNECTION});
+            const country = getPlaidCountry(policy?.outputCurrency, currencyList, countryByIp);
+            setAddNewCompanyCardStepAndData({
+                data: {
+                    selectedCountry: country,
+                },
+            });
+            setAssignCardStepAndData({
+                data,
+                currentStep: CONST.COMPANY_CARD.STEP.PLAID_CONNECTION,
+            });
             Navigation.setNavigationActionToMicrotaskQueue(() => Navigation.navigate(ROUTES.WORKSPACE_COMPANY_CARDS_ASSIGN_CARD.getRoute(policyID, selectedFeed)));
             return;
         }
 
-        Navigation.navigate(ROUTES.WORKSPACE_COMPANY_CARDS_BANK_CONNECTION.getRoute(policyID, bankName, Navigation.getActiveRoute()));
+        setAssignCardStepAndData({data, currentStep: CONST.COMPANY_CARD.STEP.BANK_CONNECTION});
+        Navigation.setNavigationActionToMicrotaskQueue(() => Navigation.navigate(ROUTES.WORKSPACE_COMPANY_CARDS_ASSIGN_CARD.getRoute(policyID, selectedFeed)));
     };
 
     const secondaryActions = useMemo(
@@ -120,11 +140,11 @@ function WorkspaceCompanyCardsListHeaderButtons({policyID, selectedFeed, shouldS
                     <ButtonWithDropdownMenu
                         success={false}
                         onPress={() => {}}
-                        shouldAlwaysShowDropdownMenu
+                        shouldUseOptionIcon
                         customText={translate('common.more')}
                         options={secondaryActions}
                         isSplitButton={false}
-                        wrapperStyle={styles.flexGrow0}
+                        wrapperStyle={shouldShowAssignCardButton ? styles.flexGrow0 : styles.flex1}
                     />
                 </View>
             </View>
@@ -135,7 +155,7 @@ function WorkspaceCompanyCardsListHeaderButtons({policyID, selectedFeed, shouldS
                         fill={theme.danger}
                         additionalStyles={styles.mr1}
                     />
-                    <Text style={[styles.offlineFeedback.text, styles.pr5]}>
+                    <Text style={[styles.offlineFeedbackText, styles.pr5]}>
                         <Text style={[StyleUtils.getDotIndicatorTextStyles(true)]}>{translate('workspace.companyCards.brokenConnectionErrorFirstPart')}</Text>
                         <TextLink
                             style={[StyleUtils.getDotIndicatorTextStyles(), styles.link]}

@@ -4,12 +4,13 @@ import {act, render, screen} from '@testing-library/react-native';
 import Onyx from 'react-native-onyx';
 import ComposeProviders from '@components/ComposeProviders';
 import {LocaleContextProvider} from '@components/LocaleContextProvider';
-import OnyxProvider from '@components/OnyxProvider';
+import OnyxListItemProvider from '@components/OnyxListItemProvider';
 import {CurrentReportIDContextProvider} from '@hooks/useCurrentReportID';
 import Navigation, {navigationRef} from '@libs/Navigation/Navigation';
 import createPlatformStackNavigator from '@libs/Navigation/PlatformStackNavigation/createPlatformStackNavigator';
 import type {SettingsNavigatorParamList} from '@libs/Navigation/types';
 import PersonalAddressPage from '@pages/settings/Profile/PersonalDetails/PersonalAddressPage';
+import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import SCREENS from '@src/SCREENS';
 import * as TestHelper from '../utils/TestHelper';
@@ -31,7 +32,7 @@ const Stack = createPlatformStackNavigator<SettingsNavigatorParamList>();
 
 const renderPage = (initialRouteName: typeof SCREENS.SETTINGS.PROFILE.ADDRESS) => {
     return render(
-        <ComposeProviders components={[OnyxProvider, LocaleContextProvider, CurrentReportIDContextProvider]}>
+        <ComposeProviders components={[OnyxListItemProvider, LocaleContextProvider, CurrentReportIDContextProvider]}>
             <PortalProvider>
                 <NavigationContainer ref={navigationRef}>
                     <Stack.Navigator initialRouteName={initialRouteName}>
@@ -47,10 +48,15 @@ const renderPage = (initialRouteName: typeof SCREENS.SETTINGS.PROFILE.ADDRESS) =
 };
 
 describe('AddressPageTest', () => {
-    beforeAll(() => {
+    beforeAll(async () => {
         Onyx.init({
             keys: ONYXKEYS,
         });
+
+        await act(async () => {
+            await Onyx.set(ONYXKEYS.NVP_PREFERRED_LOCALE, CONST.LOCALES.EN);
+        });
+        await waitForBatchedUpdatesWithAct();
     });
     it('should not reset state', async () => {
         await TestHelper.signInWithTestUser();
@@ -66,6 +72,8 @@ describe('AddressPageTest', () => {
             });
             await Onyx.merge(`${ONYXKEYS.IS_LOADING_APP}`, false);
         });
+
+        await waitForBatchedUpdatesWithAct();
 
         renderPage(SCREENS.SETTINGS.PROFILE.ADDRESS);
 

@@ -1,22 +1,22 @@
-import React, {useCallback, useEffect, useState} from 'react';
-import {ActivityIndicator} from 'react-native';
-import {useOnyx} from 'react-native-onyx';
+import React, {useCallback, useContext, useEffect, useState} from 'react';
+import ActivityIndicator from '@components/ActivityIndicator';
 import DecisionModal from '@components/DecisionModal';
-import DelegateNoAccessModal from '@components/DelegateNoAccessModal';
-import * as Illustrations from '@components/Icon/Illustrations';
+import {DelegateNoAccessContext} from '@components/DelegateNoAccessModalProvider';
 import useCardFeeds from '@hooks/useCardFeeds';
 import useCardsList from '@hooks/useCardsList';
+import {useMemoizedLazyIllustrations} from '@hooks/useLazyAsset';
 import useLocalize from '@hooks/useLocalize';
 import useNetwork from '@hooks/useNetwork';
+import useOnyx from '@hooks/useOnyx';
 import usePermissions from '@hooks/usePermissions';
 import useResponsiveLayout from '@hooks/useResponsiveLayout';
-import useTheme from '@hooks/useTheme';
 import useThemeStyles from '@hooks/useThemeStyles';
 import {
     checkIfFeedConnectionIsBroken,
     getCompanyFeeds,
     getDomainOrWorkspaceAccountID,
     getFilteredCardList,
+    getPlaidCountry,
     getPlaidInstitutionId,
     getSelectedFeed,
     hasOnlyOneCardToAssign,
@@ -30,13 +30,14 @@ import {getPersonalDetailByEmail} from '@libs/PersonalDetailsUtils';
 import {isDeletedPolicyEmployee} from '@libs/PolicyUtils';
 import AccessOrNotFoundWrapper from '@pages/workspace/AccessOrNotFoundWrapper';
 import WorkspacePageWithSections from '@pages/workspace/WorkspacePageWithSections';
-import {openPolicyCompanyCardsFeed, openPolicyCompanyCardsPage, setAssignCardStepAndData} from '@userActions/CompanyCards';
+import {clearAddNewCardFlow, openPolicyCompanyCardsFeed, openPolicyCompanyCardsPage, setAddNewCompanyCardStepAndData, setAssignCardStepAndData} from '@userActions/CompanyCards';
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import ROUTES from '@src/ROUTES';
 import type SCREENS from '@src/SCREENS';
+import type {CurrencyList} from '@src/types/onyx';
 import type {AssignCardData, AssignCardStep} from '@src/types/onyx/AssignCard';
-import {isEmptyObject} from '@src/types/utils/EmptyObject';
+import {getEmptyObject, isEmptyObject} from '@src/types/utils/EmptyObject';
 import WorkspaceCompanyCardPageEmptyState from './WorkspaceCompanyCardPageEmptyState';
 import WorkspaceCompanyCardsFeedPendingPage from './WorkspaceCompanyCardsFeedPendingPage';
 import WorkspaceCompanyCardsList from './WorkspaceCompanyCardsList';
@@ -47,24 +48,25 @@ type WorkspaceCompanyCardsPageProps = PlatformStackScreenProps<WorkspaceSplitNav
 function WorkspaceCompanyCardsPage({route}: WorkspaceCompanyCardsPageProps) {
     const {translate} = useLocalize();
     const styles = useThemeStyles();
-    const theme = useTheme();
+    const illustrations = useMemoizedLazyIllustrations(['CompanyCard'] as const);
     const policyID = route.params.policyID;
     const [policy] = useOnyx(`${ONYXKEYS.COLLECTION.POLICY}${policyID}`, {canBeMissing: false});
     const workspaceAccountID = policy?.workspaceAccountID ?? CONST.DEFAULT_NUMBER_ID;
     const [lastSelectedFeed] = useOnyx(`${ONYXKEYS.COLLECTION.LAST_SELECTED_FEED}${policyID}`, {canBeMissing: true});
+    const [workspaceCardFeeds] = useOnyx(`${ONYXKEYS.COLLECTION.WORKSPACE_CARDS_LIST}`, {canBeMissing: true});
     const [cardFeeds] = useCardFeeds(policyID);
     const selectedFeed = getSelectedFeed(lastSelectedFeed, cardFeeds);
     const [cardsList] = useCardsList(policyID, selectedFeed);
     const [countryByIp] = useOnyx(ONYXKEYS.COUNTRY, {canBeMissing: false});
+    const [currencyList = getEmptyObject<CurrencyList>()] = useOnyx(ONYXKEYS.CURRENCY_LIST, {canBeMissing: true});
     const {isBetaEnabled} = usePermissions();
     const hasNoAssignedCard = Object.keys(cardsList ?? {}).length === 0;
 
     const {cardList, ...cards} = cardsList ?? {};
 
-    const [isActingAsDelegate] = useOnyx(ONYXKEYS.ACCOUNT, {selector: (account) => !!account?.delegatedAccess?.delegate, canBeMissing: false});
-    const [isNoDelegateAccessMenuVisible, setIsNoDelegateAccessMenuVisible] = useState(false);
+    const {isActingAsDelegate, showDelegateNoAccessModal} = useContext(DelegateNoAccessContext);
 
-    const filteredCardList = getFilteredCardList(cardsList, selectedFeed ? cardFeeds?.settings?.oAuthAccountDetails?.[selectedFeed] : undefined);
+    const filteredCardList = getFilteredCardList(cardsList, selectedFeed ? cardFeeds?.settings?.oAuthAccountDetails?.[selectedFeed] : undefined, workspaceCardFeeds);
 
     const companyCards = getCompanyFeeds(cardFeeds);
     const selectedFeedData = selectedFeed && companyCards[selectedFeed];
@@ -98,7 +100,7 @@ function WorkspaceCompanyCardsPage({route}: WorkspaceCompanyCardsPageProps) {
 
     const handleAssignCard = () => {
         if (isActingAsDelegate) {
-            setIsNoDelegateAccessMenuVisible(true);
+            showDelegateNoAccessModal();
             return;
         }
         if (!selectedFeed) {
@@ -139,9 +141,18 @@ function WorkspaceCompanyCardsPage({route}: WorkspaceCompanyCardsPageProps) {
 
         if (isFeedExpired) {
             const institutionId = !!getPlaidInstitutionId(selectedFeed);
+            if (institutionId) {
+                const country = getPlaidCountry(policy?.outputCurrency, currencyList, countryByIp);
+                setAddNewCompanyCardStepAndData({
+                    data: {
+                        selectedCountry: country,
+                    },
+                });
+            }
             currentStep = institutionId ? CONST.COMPANY_CARD.STEP.PLAID_CONNECTION : CONST.COMPANY_CARD.STEP.BANK_CONNECTION;
         }
 
+        clearAddNewCardFlow();
         setAssignCardStepAndData({data, currentStep});
         Navigation.setNavigationActionToMicrotaskQueue(() => Navigation.navigate(ROUTES.WORKSPACE_COMPANY_CARDS_ASSIGN_CARD.getRoute(policyID, selectedFeed)));
     };
@@ -151,17 +162,16 @@ function WorkspaceCompanyCardsPage({route}: WorkspaceCompanyCardsPageProps) {
             policyID={route.params.policyID}
             featureName={CONST.POLICY.MORE_FEATURES.ARE_COMPANY_CARDS_ENABLED}
         >
-            {!!isLoading && (
+            {isLoading && (
                 <ActivityIndicator
                     size={CONST.ACTIVITY_INDICATOR_SIZE.LARGE}
                     style={styles.flex1}
-                    color={theme.spinner}
                 />
             )}
             {!isLoading && (
                 <WorkspacePageWithSections
                     shouldUseScrollView={isNoFeed}
-                    icon={Illustrations.CompanyCard}
+                    icon={illustrations.CompanyCard}
                     headerText={translate('workspace.common.companyCards')}
                     route={route}
                     shouldShowOfflineIndicatorInWideScreen
@@ -194,10 +204,6 @@ function WorkspaceCompanyCardsPage({route}: WorkspaceCompanyCardsPageProps) {
                     )}
                 </WorkspacePageWithSections>
             )}
-            <DelegateNoAccessModal
-                isNoDelegateAccessMenuVisible={isNoDelegateAccessMenuVisible}
-                onClose={() => setIsNoDelegateAccessMenuVisible(false)}
-            />
 
             <DecisionModal
                 title={translate('common.youAppearToBeOffline')}
