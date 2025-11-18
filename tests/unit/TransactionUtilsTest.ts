@@ -9,8 +9,9 @@ import type {CustomUnit, Rate} from '@src/types/onyx/Policy';
 import type {ReportCollectionDataSet} from '@src/types/onyx/Report';
 import type {TransactionCustomUnit} from '@src/types/onyx/Transaction';
 import * as TransactionUtils from '../../src/libs/TransactionUtils';
-import type {Policy, Transaction} from '../../src/types/onyx';
+import type {Policy, Report, Transaction} from '../../src/types/onyx';
 import createRandomPolicy, {createCategoryTaxExpenseRules} from '../utils/collections/policies';
+import {createRandomReport} from '../utils/collections/reports';
 import waitForBatchedUpdates from '../utils/waitForBatchedUpdates';
 
 function generateTransaction(values: Partial<Transaction> = {}): Transaction {
@@ -404,6 +405,7 @@ describe('TransactionUtils', () => {
                 receipt: {
                     state: CONST.IOU.RECEIPT_STATE.SCAN_READY,
                 },
+                merchant: '(none)',
             });
             expect(TransactionUtils.shouldShowRTERViolationMessage([transaction])).toBe(true);
         });
@@ -520,7 +522,7 @@ describe('TransactionUtils', () => {
         it('should return (none) if transaction has no merchant', () => {
             const transaction = generateTransaction();
             const merchant = TransactionUtils.getMerchant(transaction);
-            expect(merchant).toBe('(none)');
+            expect(merchant).toBe('Expense');
         });
 
         it('should return modified merchant if transaction has modified merchant', () => {
@@ -536,7 +538,12 @@ describe('TransactionUtils', () => {
             const transaction = generateTransaction({
                 iouRequestType: CONST.IOU.REQUEST_TYPE.DISTANCE,
             });
-            const merchant = TransactionUtils.getMerchant(transaction);
+            const policy: Policy = {
+                ...createRandomPolicy(10),
+                role: CONST.POLICY.ROLE.ADMIN,
+                customUnits: {},
+            };
+            const merchant = TransactionUtils.getMerchant(transaction, policy);
             expect(merchant).toBe('Pending...');
         });
 
@@ -724,6 +731,25 @@ describe('TransactionUtils', () => {
             const violation = {type: CONST.VIOLATION_TYPES.VIOLATION, name: CONST.VIOLATIONS.DUPLICATED_TRANSACTION};
             const result = TransactionUtils.isViolationDismissed(transaction, violation);
             expect(result).toBe(true);
+        });
+    });
+
+    describe('shouldShowViolation', () => {
+        it('should return false for auto approval limit violation when report is not open/processing report', () => {
+            const iouReport: Report = {
+                ...createRandomReport(0, undefined),
+                type: CONST.REPORT.TYPE.EXPENSE,
+                statusNum: CONST.REPORT.STATUS_NUM.APPROVED,
+                stateNum: CONST.REPORT.STATE_NUM.APPROVED,
+                ownerAccountID: 2,
+            };
+
+            const policy: Policy = {
+                ...createRandomPolicy(0, CONST.POLICY.TYPE.TEAM),
+                role: CONST.POLICY.ROLE.ADMIN,
+            };
+
+            expect(TransactionUtils.shouldShowViolation(iouReport, policy, CONST.VIOLATIONS.OVER_AUTO_APPROVAL_LIMIT, 'test@example.com')).toBe(false);
         });
     });
 });

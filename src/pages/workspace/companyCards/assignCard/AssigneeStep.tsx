@@ -43,7 +43,7 @@ function AssigneeStep({policy, feed}: AssigneeStepProps) {
     const {isOffline} = useNetwork();
     const [assignCard] = useOnyx(ONYXKEYS.ASSIGN_CARD, {canBeMissing: true});
     const [workspaceCardFeeds] = useOnyx(ONYXKEYS.COLLECTION.WORKSPACE_CARDS_LIST, {canBeMissing: false});
-    const [countryCode] = useOnyx(ONYXKEYS.COUNTRY_CODE, {canBeMissing: false});
+    const [countryCode = CONST.DEFAULT_COUNTRY_CODE] = useOnyx(ONYXKEYS.COUNTRY_CODE, {canBeMissing: false});
     const [list] = useCardsList(policy?.id, feed);
     const [cardFeeds] = useCardFeeds(policy?.id);
     const filteredCardList = getFilteredCardList(list, cardFeeds?.settings?.oAuthAccountDetails?.[feed], workspaceCardFeeds);
@@ -115,9 +115,9 @@ function AssigneeStep({policy, feed}: AssigneeStepProps) {
             return membersList;
         }
 
-        Object.entries(policy.employeeList ?? {}).forEach(([email, policyEmployee]) => {
+        for (const [email, policyEmployee] of Object.entries(policy.employeeList ?? {})) {
             if (isDeletedPolicyEmployee(policyEmployee, isOffline)) {
-                return;
+                continue;
             }
 
             const personalDetail = getPersonalDetailByEmail(email);
@@ -137,7 +137,7 @@ function AssigneeStep({policy, feed}: AssigneeStepProps) {
                     },
                 ],
             });
-        });
+        }
 
         membersList = sortAlphabetically(membersList, 'text', localeCompare);
 
@@ -169,8 +169,8 @@ function AssigneeStep({policy, feed}: AssigneeStepProps) {
     const headerMessage = useMemo(() => {
         const searchValue = debouncedSearchTerm.trim().toLowerCase();
 
-        return getHeaderMessage(sections[0].data.length !== 0, false, searchValue);
-    }, [debouncedSearchTerm, sections]);
+        return getHeaderMessage(sections[0].data.length !== 0, false, searchValue, countryCode, false);
+    }, [debouncedSearchTerm, sections, countryCode]);
 
     return (
         <InteractiveStepWrapper

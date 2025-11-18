@@ -151,13 +151,13 @@ function ReportParticipantsPage({report, route}: ReportParticipantsPageProps) {
     const getParticipants = () => {
         let result: MemberOption[] = [];
 
-        chatParticipants.forEach((accountID) => {
+        for (const accountID of chatParticipants) {
             const role = reportParticipants?.[accountID].role;
             const details = personalDetails?.[accountID];
 
             // If search value is provided, filter out members that don't match the search value
             if (!details || (searchValue.trim() && !isSearchStringMatchUserDetails(details, searchValue))) {
-                return;
+                continue;
             }
 
             const pendingChatMember = pendingChatMembers?.findLast((member) => member.accountID === accountID.toString());
@@ -189,7 +189,7 @@ function ReportParticipantsPage({report, route}: ReportParticipantsPageProps) {
                     },
                 ],
             });
-        });
+        }
 
         result = result.sort((a, b) => localeCompare((a.text ?? '').toLowerCase(), (b.text ?? '').toLowerCase()));
         return result;
@@ -243,7 +243,7 @@ function ReportParticipantsPage({report, route}: ReportParticipantsPageProps) {
         removeFromGroupChat(report.reportID, accountIDsToRemove);
         setSearchValue('');
         setRemoveMembersConfirmModalVisible(false);
-        // eslint-disable-next-line deprecation/deprecation
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         InteractionManager.runAfterInteractions(() => {
             setSelectedMembers([]);
             clearUserSearchPhrase();
@@ -430,7 +430,7 @@ function ReportParticipantsPage({report, route}: ReportParticipantsPageProps) {
                     confirmText={translate('common.remove')}
                     cancelText={translate('common.cancel')}
                     onModalHide={() => {
-                        // eslint-disable-next-line deprecation/deprecation
+                        // eslint-disable-next-line @typescript-eslint/no-deprecated
                         InteractionManager.runAfterInteractions(() => {
                             if (!textInputRef.current) {
                                 return;
