@@ -1,6 +1,6 @@
 import {useFocusEffect} from '@react-navigation/native';
 import type {ForwardedRef} from 'react';
-import React, {useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
 import {View} from 'react-native';
 import type {StyleProp, ViewStyle} from 'react-native';
 import Button from '@components/Button';
@@ -10,7 +10,9 @@ import type {AutoCompleteVariant, MagicCodeInputHandle} from '@components/MagicC
 import OfflineWithFeedback from '@components/OfflineWithFeedback';
 import PressableWithFeedback from '@components/Pressable/PressableWithFeedback';
 import Text from '@components/Text';
-import {WideRHPContext} from '@components/WideRHPContextProvider';
+import ValidateCodeCountdown from '@components/ValidateCodeCountdown';
+import type {ValidateCodeCountdownHandle} from '@components/ValidateCodeCountdown/types';
+import {useWideRHPState} from '@components/WideRHPContextProvider';
 import useLocalize from '@hooks/useLocalize';
 import useNetwork from '@hooks/useNetwork';
 import useOnyx from '@hooks/useOnyx';
@@ -20,8 +22,6 @@ import useThemeStyles from '@hooks/useThemeStyles';
 import {isMobileSafari} from '@libs/Browser';
 import {getLatestErrorField, getLatestErrorMessage} from '@libs/ErrorUtils';
 import {isValidValidateCode} from '@libs/ValidationUtils';
-import ValidateCodeCountdown from '@pages/signin/ValidateCodeCountdown';
-import type {ValidateCodeCountdownHandle} from '@pages/signin/ValidateCodeCountdown/types';
 import {clearValidateCodeActionError} from '@userActions/User';
 import CONST from '@src/CONST';
 import type {TranslationPaths} from '@src/languages/types';
@@ -44,7 +44,7 @@ type ValidateCodeFormProps = {
     autoComplete?: AutoCompleteVariant;
 
     /** Forwarded inner ref */
-    innerRef?: ForwardedRef<ValidateCodeFormHandle>;
+    ref?: ForwardedRef<ValidateCodeFormHandle>;
 
     hasMagicCodeBeenSent?: boolean;
 
@@ -89,11 +89,14 @@ type ValidateCodeFormProps = {
 
     /** Function to call when skip button is pressed */
     handleSkipButtonPress?: () => void;
+
+    /** Whether the modal is used as a page modal. Used to determine input auto focus timing. */
+    isInPageModal?: boolean;
 };
 
 function BaseValidateCodeForm({
     autoComplete = 'one-time-code',
-    innerRef = () => {},
+    ref = () => {},
     hasMagicCodeBeenSent,
     validateCodeActionErrorField,
     validatePendingAction,
@@ -107,10 +110,11 @@ function BaseValidateCodeForm({
     isLoading,
     shouldShowSkipButton = false,
     handleSkipButtonPress,
+    isInPageModal = false,
 }: ValidateCodeFormProps) {
     const {translate} = useLocalize();
     const {isOffline} = useNetwork();
-    const {wideRHPRouteKeys} = useContext(WideRHPContext);
+    const {wideRHPRouteKeys} = useWideRHPState();
     const theme = useTheme();
     const styles = useThemeStyles();
     const StyleUtils = useStyleUtils();
@@ -142,7 +146,7 @@ function BaseValidateCodeForm({
         clearValidateCodeActionError('actionVerified');
     }, [defaultValidateCodeError]);
 
-    useImperativeHandle(innerRef, () => ({
+    useImperativeHandle(ref, () => ({
         focus() {
             inputValidateCodeRef.current?.focus();
         },
@@ -198,16 +202,16 @@ function BaseValidateCodeForm({
         if (!validateCodeSent) {
             return;
         }
-        // Delay prevents the input from gaining focus before the RHP slide out animation finishes,
-        // which would cause the wide RHP to flicker in the background.
-        if (wideRHPRouteKeys.length > 0 && !isMobileSafari()) {
+        // Delay prevents the input from gaining focus before the RHP slide-out animation finishes,
+        // which would cause issues with the RHP sliding out smoothly and flickering of the wide RHP in the background.
+        if ((wideRHPRouteKeys.length > 0 && !isMobileSafari()) || isInPageModal) {
             focusTimeoutRef.current = setTimeout(() => {
                 inputValidateCodeRef.current?.clear();
             }, CONST.ANIMATED_TRANSITION);
         } else {
             inputValidateCodeRef.current?.clear();
         }
-    }, [validateCodeSent, wideRHPRouteKeys.length]);
+    }, [validateCodeSent, wideRHPRouteKeys.length, isInPageModal]);
 
     /**
      * Request a validate code / magic code be sent to verify this contact method
@@ -272,7 +276,7 @@ function BaseValidateCodeForm({
             return translate(formError?.validateCode);
         }
         return getLatestErrorMessage(account ?? {});
-    }, [canShowError, formError, account, translate]);
+    }, [canShowError, formError?.validateCode, account, translate]);
 
     const shouldShowTimer = isCountdownRunning && !isOffline;
 
@@ -374,8 +378,6 @@ function BaseValidateCodeForm({
         </>
     );
 }
-
-BaseValidateCodeForm.displayName = 'BaseValidateCodeForm';
 
 export type {ValidateCodeFormProps, ValidateCodeFormHandle};
 

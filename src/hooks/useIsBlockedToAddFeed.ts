@@ -1,12 +1,8 @@
 import {useEffect, useState} from 'react';
-import {getCompanyFeeds, getSelectedFeed} from '@libs/CardUtils';
+import {getCompanyFeeds} from '@libs/CardUtils';
 import {isCollectPolicy} from '@libs/PolicyUtils';
-import ONYXKEYS from '@src/ONYXKEYS';
-import {isEmptyObject} from '@src/types/utils/EmptyObject';
 import isLoadingOnyxValue from '@src/types/utils/isLoadingOnyxValue';
 import useCardFeeds from './useCardFeeds';
-import useCardsList from './useCardsList';
-import useOnyx from './useOnyx';
 import usePolicy from './usePolicy';
 
 /**
@@ -23,15 +19,12 @@ import usePolicy from './usePolicy';
 function useIsBlockedToAddFeed(policyID?: string) {
     const policy = usePolicy(policyID);
     const [cardFeeds, allFeedsResult, defaultFeed] = useCardFeeds(policyID);
-    const [lastSelectedFeed] = useOnyx(`${ONYXKEYS.COLLECTION.LAST_SELECTED_FEED}${policyID}`, {canBeMissing: true});
     const companyFeeds = getCompanyFeeds(cardFeeds, true);
     const isCollect = isCollectPolicy(policy);
     const isAllFeedsResultLoading = isLoadingOnyxValue(allFeedsResult);
-    const selectedFeed = getSelectedFeed(lastSelectedFeed, cardFeeds);
-    const [cardsList] = useCardsList(policyID, selectedFeed);
     const [prevCompanyFeedsLength, setPrevCompanyFeedsLength] = useState(0);
 
-    const isLoading = !cardFeeds || (!!cardFeeds.isLoading && isEmptyObject(cardsList)) || !!defaultFeed?.isLoading;
+    const isLoading = !cardFeeds || !!defaultFeed?.isLoading;
 
     useEffect(() => {
         if (isLoading) {
@@ -39,7 +32,7 @@ function useIsBlockedToAddFeed(policyID?: string) {
         }
         const connectedFeeds = Object.entries(companyFeeds)?.length;
         setPrevCompanyFeedsLength(connectedFeeds);
-        // eslint-disable-next-line react-compiler/react-compiler, react-hooks/exhaustive-deps -- we don't want this effect to run again
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- we don't want this effect to run again
     }, [isLoading]);
 
     return {

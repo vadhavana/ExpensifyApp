@@ -104,12 +104,13 @@ function SelectionListWithSections<TItem extends ListItem>({onScroll, shouldHide
             // For example, a long press will trigger a focus event on mobile chrome.
             shouldIgnoreFocus={isMobileChrome() && isScreenTouched}
             shouldDebounceScrolling={shouldDebounceScrolling}
+            isRowMultilineSupported
             shouldDisableHoverStyle={shouldDisableHoverStyle}
             setShouldDisableHoverStyle={setShouldDisableHoverStyle}
+            // Web doesn't require scroll offset correction, only native does
+            shouldSkipContentHeaderHeightOffset={false}
         />
     );
 }
-
-SelectionListWithSections.displayName = 'SelectionListWithSections';
 
 export default SelectionListWithSections;
