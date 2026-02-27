@@ -29,7 +29,9 @@ import type {CodingRuleFilter} from '@src/types/onyx/Policy';
 type PreviewMatchesPageProps = PlatformStackScreenProps<SettingsNavigatorParamList, typeof SCREENS.WORKSPACE.RULES_MERCHANT_PREVIEW_MATCHES>;
 
 function PreviewMatchesPage({route}: PreviewMatchesPageProps) {
+    const ruleID = route.params.ruleID;
     const policyID = route.params.policyID;
+    const isEditing = ruleID !== ROUTES.NEW;
 
     const theme = useTheme();
     const styles = useThemeStyles();
@@ -37,9 +39,9 @@ function PreviewMatchesPage({route}: PreviewMatchesPageProps) {
     const {isOffline} = useNetwork();
     const illustrations = useMemoizedLazyIllustrations(['Telescope']);
 
-    const [form] = useOnyx(ONYXKEYS.FORMS.MERCHANT_RULE_FORM, {canBeMissing: true});
-    const [isLoading] = useOnyx(ONYXKEYS.IS_LOADING_POLICY_CODING_RULES_PREVIEW, {canBeMissing: true});
-    const [matchingTransactions] = useOnyx(ONYXKEYS.COLLECTION.CODING_RULE_MATCHING_TRANSACTION, {canBeMissing: true});
+    const [form] = useOnyx(ONYXKEYS.FORMS.MERCHANT_RULE_FORM);
+    const [isLoading] = useOnyx(ONYXKEYS.IS_LOADING_POLICY_CODING_RULES_PREVIEW);
+    const [matchingTransactions] = useOnyx(ONYXKEYS.COLLECTION.CODING_RULE_MATCHING_TRANSACTION);
 
     const merchant = form?.merchantToMatch ?? '';
     const operator = form?.matchType ?? CONST.SEARCH.SYNTAX_OPERATORS.CONTAINS;
@@ -75,6 +77,11 @@ function PreviewMatchesPage({route}: PreviewMatchesPageProps) {
     );
 
     const goBack = () => {
+        if (isEditing) {
+            Navigation.goBack(ROUTES.RULES_MERCHANT_EDIT.getRoute(policyID, ruleID));
+            return;
+        }
+
         Navigation.goBack(ROUTES.RULES_MERCHANT_NEW.getRoute(policyID));
     };
 

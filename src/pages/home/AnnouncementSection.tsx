@@ -8,7 +8,15 @@ import useResponsiveLayout from '@hooks/useResponsiveLayout';
 import useThemeStyles from '@hooks/useThemeStyles';
 import CONST from '@src/CONST';
 
-const announcements = CONST.HOME.ANNOUNCEMENTS;
+const announcements = CONST.HOME.ANNOUNCEMENTS.toSorted((a, b) => {
+    if (a.publishedDate > b.publishedDate) {
+        return -1;
+    }
+    if (a.publishedDate < b.publishedDate) {
+        return 1;
+    }
+    return 0;
+});
 
 function AnnouncementSection() {
     const {shouldUseNarrowLayout} = useResponsiveLayout();
@@ -28,7 +36,11 @@ function AnnouncementSection() {
                     onPress={() => Linking.openURL(announcement.url)}
                     shouldShowRightIcon
                     leftComponent={<DateIcon date={announcement.publishedDate} />}
-                    wrapperStyle={[styles.alignItemsCenter, shouldUseNarrowLayout ? styles.pl5 : styles.pl8]}
+                    wrapperStyle={[styles.alignItemsCenter, shouldUseNarrowLayout ? styles.ph5 : styles.ph8]}
+                    hasSubMenuItems
+                    viewMode={CONST.OPTION_MODE.COMPACT}
+                    rightIconWrapperStyle={styles.pl2}
+                    shouldCheckActionAllowedOnPress={false}
                 />
             ))}
         </WidgetContainer>
