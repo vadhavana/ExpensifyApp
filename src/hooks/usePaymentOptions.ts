@@ -61,7 +61,7 @@ function usePaymentOptions({
     shouldDisableApproveButton = false,
     onlyShowPayElsewhere,
 }: UsePaymentOptionsProps): PaymentOrApproveOption[] {
-    const icons = useMemoizedLazyExpensifyIcons(['Building', 'User', 'ThumbsUp', 'Bank', 'Wallet', 'Cash']);
+    const icons = useMemoizedLazyExpensifyIcons(['Building', 'User', 'ThumbsUp', 'Bank', 'Wallet', 'Cash', 'CheckCircle']);
     const styles = useThemeStyles();
     const {translate} = useLocalize();
     const policy = usePolicy(policyID);
@@ -115,13 +115,14 @@ function usePaymentOptions({
     const isInvoiceReport = (!isEmptyObject(iouReport) && isInvoiceReportUtil(iouReport)) || false;
     const shouldShowPayWithExpensifyOption = !shouldHidePaymentOptions;
     const shouldShowPayElsewhereOption = !shouldHidePaymentOptions && !isInvoiceReport;
+    const hasPersonalBankAccount = Object.values(bankAccountList).some((account) => account?.accountData?.type === CONST.BANK_ACCOUNT.TYPE.PERSONAL);
     const paymentButtonOptions = useMemo(() => {
         const buttonOptions = [];
         const isExpenseReport = isExpenseReportUtil(iouReport);
         const paymentMethods = {
             [CONST.IOU.PAYMENT_TYPE.EXPENSIFY]: {
-                text: hasActivatedWallet ? translate('iou.settleWallet', '') : translate('iou.settlePersonal', ''),
-                icon: icons.Wallet,
+                text: hasActivatedWallet || hasPersonalBankAccount ? translate('iou.settleWallet', '') : translate('iou.settlePersonal', ''),
+                icon: hasActivatedWallet || hasPersonalBankAccount ? icons.Wallet : icons.User,
                 value: CONST.IOU.PAYMENT_TYPE.EXPENSIFY,
             },
             [CONST.IOU.PAYMENT_TYPE.VBBA]: {
@@ -131,7 +132,7 @@ function usePaymentOptions({
             },
             [CONST.IOU.PAYMENT_TYPE.ELSEWHERE]: {
                 text: translate('iou.payElsewhere', formattedAmount),
-                icon: icons.Cash,
+                icon: icons.CheckCircle,
                 value: CONST.IOU.PAYMENT_TYPE.ELSEWHERE,
             },
         };
@@ -265,6 +266,8 @@ function usePaymentOptions({
         onPress,
         onlyShowPayElsewhere,
         icons,
+        hasActivatedWallet,
+        hasPersonalBankAccount,
     ]);
 
     return paymentButtonOptions;

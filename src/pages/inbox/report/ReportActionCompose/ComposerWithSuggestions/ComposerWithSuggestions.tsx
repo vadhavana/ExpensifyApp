@@ -2,7 +2,17 @@ import {useIsFocused, useNavigation, useRoute} from '@react-navigation/native';
 import lodashDebounce from 'lodash/debounce';
 import type {Ref, RefObject} from 'react';
 import React, {memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
-import type {BlurEvent, LayoutChangeEvent, MeasureInWindowOnSuccessCallback, TextInput, TextInputContentSizeChangeEvent, TextInputKeyPressEvent, TextInputScrollEvent} from 'react-native';
+import type {
+    BlurEvent,
+    LayoutChangeEvent,
+    MeasureInWindowOnSuccessCallback,
+    NativeMethods,
+    TextInput,
+    TextInputContentSizeChangeEvent,
+    TextInputKeyPressEvent,
+    TextInputScrollEvent,
+} from 'react-native';
+// eslint-disable-next-line no-restricted-imports
 import {DeviceEventEmitter, InteractionManager, NativeModules, StyleSheet, View} from 'react-native';
 import {useFocusedInputHandler} from 'react-native-keyboard-controller';
 import type {OnyxEntry} from 'react-native-onyx';
@@ -13,6 +23,7 @@ import Composer from '@components/Composer';
 import type {CustomSelectionChangeEvent, TextSelection} from '@components/Composer/types';
 import {useWideRHPState} from '@components/WideRHPContextProvider';
 import useCurrentUserPersonalDetails from '@hooks/useCurrentUserPersonalDetails';
+import useIsInSidePanel from '@hooks/useIsInSidePanel';
 import useKeyboardState from '@hooks/useKeyboardState';
 import useLocalize from '@hooks/useLocalize';
 import useOnyx from '@hooks/useOnyx';
@@ -38,11 +49,13 @@ import ReportActionComposeFocusManager from '@libs/ReportActionComposeFocusManag
 import {isValidReportIDFromPath, shouldAutoFocusOnKeyPress} from '@libs/ReportUtils';
 import updateMultilineInputRange from '@libs/updateMultilineInputRange';
 import willBlurTextInputOnTapOutsideFunc from '@libs/willBlurTextInputOnTapOutside';
+import {useComposerActions, useComposerText} from '@pages/inbox/report/ReportActionCompose/ComposerContext';
 import getCursorPosition from '@pages/inbox/report/ReportActionCompose/getCursorPosition';
 import getScrollPosition from '@pages/inbox/report/ReportActionCompose/getScrollPosition';
 import type {SuggestionsRef} from '@pages/inbox/report/ReportActionCompose/ReportActionCompose';
 import SilentCommentUpdater from '@pages/inbox/report/ReportActionCompose/SilentCommentUpdater';
 import Suggestions from '@pages/inbox/report/ReportActionCompose/Suggestions';
+import useLastEditableAction from '@pages/inbox/report/ReportActionCompose/useLastEditableAction';
 import {isEmojiPickerVisible} from '@userActions/EmojiPickerAction';
 import type {OnEmojiSelected} from '@userActions/EmojiPickerAction';
 import {inputFocusChange} from '@userActions/InputFocus';
@@ -51,7 +64,6 @@ import {broadcastUserIsTyping, saveReportActionDraft, saveReportDraftComment} fr
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import SCREENS from '@src/SCREENS';
-import type * as OnyxTypes from '@src/types/onyx';
 import type {FileObject} from '@src/types/utils/Attachment';
 import type ChildrenProps from '@src/types/utils/ChildrenProps';
 // eslint-disable-next-line no-restricted-imports
@@ -102,9 +114,6 @@ type ComposerWithSuggestionsProps = Partial<ChildrenProps> &
         /** Whether the input is disabled, defaults to false */
         disabled?: boolean;
 
-        /** Function to set whether the comment is empty */
-        setIsCommentEmpty: (isCommentEmpty: boolean) => void;
-
         /** Function to handle sending a message */
         onEnterKeyPress: () => void;
 
@@ -126,9 +135,6 @@ type ComposerWithSuggestionsProps = Partial<ChildrenProps> &
         /** The ref to the next modal will open */
         isNextModalWillOpenRef: RefObject<boolean | null>;
 
-        /** The last report action */
-        lastReportAction?: OnyxEntry<OnyxTypes.ReportAction>;
-
         /** Whether to include chronos */
         includeChronos?: boolean;
 
@@ -137,9 +143,6 @@ type ComposerWithSuggestionsProps = Partial<ChildrenProps> &
 
         /** policy ID of the report */
         policyID?: string;
-
-        /** Whether the main composer was hidden */
-        didHideComposerInput?: boolean;
 
         /** Reference to the outer element */
         ref?: Ref<ComposerRef | null>;
@@ -204,7 +207,6 @@ function ComposerWithSuggestions({
     // Props: Report
     reportID,
     includeChronos,
-    lastReportAction,
     isGroupPolicyReport,
     policyID,
 
@@ -220,7 +222,6 @@ function ComposerWithSuggestions({
     inputPlaceholder,
     onPasteFile,
     disabled,
-    setIsCommentEmpty,
     onEnterKeyPress,
     shouldShowComposeInput,
     measureParentContainer = () => {},
@@ -236,11 +237,11 @@ function ComposerWithSuggestions({
 
     // For testing
     children,
-    didHideComposerInput,
 
     // Fullstory
     forwardedFSClass,
 }: ComposerWithSuggestionsProps) {
+    const lastReportAction = useLastEditableAction(reportID);
     const route = useRoute();
     const {isKeyboardShown} = useKeyboardState();
     const theme = useTheme();
@@ -254,16 +255,20 @@ function ComposerWithSuggestions({
     const mobileInputScrollPosition = useRef(0);
     const cursorPositionValue = useSharedValue({x: 0, y: 0});
     const tag = useSharedValue(-1);
-    const [draftComment = ''] = useOnyx(`${ONYXKEYS.COLLECTION.REPORT_DRAFT_COMMENT}${reportID}`);
-    const [value, setValue] = useState(() => {
-        if (draftComment) {
-            emojisPresentBefore.current = extractEmojis(draftComment);
+    const isInSidePanel = useIsInSidePanel();
+    const value = useComposerText();
+    const {setText} = useComposerActions();
+    // Snapshot of provider text at mount — used for one-time selection cursor + emoji baseline + autofocus decision.
+    // Reading the live `value` for these would cause re-renders and effect re-fires on every keystroke.
+    const [initialText] = useState(() => {
+        if (value) {
+            emojisPresentBefore.current = extractEmojis(value);
         }
-        return draftComment;
+        return value;
     });
     const {accountID: currentUserAccountID} = useCurrentUserPersonalDetails();
 
-    const commentRef = useRef(value);
+    const commentRef = useRef(initialText);
 
     const {superWideRHPRouteKeys} = useWideRHPState();
     // When SearchReport is stacked above another RHP, delay autofocus until after the transition completes to avoid animation jank
@@ -275,20 +280,20 @@ function ComposerWithSuggestions({
     const [preferredSkinTone = CONST.EMOJI_DEFAULT_SKIN_TONE] = useOnyx(ONYXKEYS.PREFERRED_EMOJI_SKIN_TONE);
     const [editFocused] = useOnyx(ONYXKEYS.INPUT_FOCUSED);
 
-    const lastTextRef = useRef(value);
+    const lastTextRef = useRef(initialText);
     useEffect(() => {
         lastTextRef.current = value;
     }, [value]);
 
     const {shouldUseNarrowLayout} = useResponsiveLayout();
     const maxComposerLines = shouldUseNarrowLayout ? CONST.COMPOSER.MAX_LINES_SMALL_SCREEN : CONST.COMPOSER.MAX_LINES;
-    const shouldAutoFocus = (shouldFocusInputOnScreenFocus || !!draftComment) && shouldShowComposeInput && areAllModalsHidden() && isFocused && !didHideComposerInput;
+    const shouldAutoFocus = (shouldFocusInputOnScreenFocus || !!value) && shouldShowComposeInput && areAllModalsHidden() && isFocused;
     const delayedAutoFocusRouteKeyRef = useRef<string | null>(null);
 
-    const valueRef = useRef(value);
+    const valueRef = useRef(initialText);
     valueRef.current = value;
 
-    const [selection, setSelection] = useState<TextSelection>(() => ({start: value.length, end: value.length, positionX: 0, positionY: 0}));
+    const [selection, setSelection] = useState<TextSelection>(() => ({start: initialText.length, end: initialText.length, positionX: 0, positionY: 0}));
 
     const [composerHeightAfterClear, setDefaultComposerHeight] = useState<number | null>(null);
     const emptyComposerHeightRef = useRef<number | null>(null);
@@ -308,19 +313,21 @@ function ComposerWithSuggestions({
         isTransitioningToPreExistingReport.current = false;
     }, []);
 
-    const animatedRef = useAnimatedRef();
+    const animatedRef = useAnimatedRef<NativeMethods>();
     /**
      * Set the TextInput Ref
      */
     const setTextInputRef = useCallback(
         (el: TextInput) => {
-            ReportActionComposeFocusManager.composerRef.current = el;
+            if (isFocused) {
+                ReportActionComposeFocusManager.composerRef.current = el;
+            }
             textInputRef.current = el;
             if (typeof animatedRef === 'function') {
                 animatedRef(el);
             }
         },
-        [animatedRef],
+        [animatedRef, isFocused],
     );
 
     const resetKeyboardInput = useCallback(() => {
@@ -442,16 +449,9 @@ function ComposerWithSuggestions({
                 }
             }
             const newCommentConverted = convertToLTRForComposer(newComment);
-            const isNewCommentEmpty = !!newCommentConverted.match(/^(\s)*$/);
-            const isPrevCommentEmpty = !!commentRef.current.match(/^(\s)*$/);
-
-            /** Only update isCommentEmpty state if it's different from previous one */
-            if (isNewCommentEmpty !== isPrevCommentEmpty) {
-                setIsCommentEmpty(isNewCommentEmpty);
-            }
             emojisPresentBefore.current = emojis;
 
-            setValue(newCommentConverted);
+            setText(newCommentConverted);
             if (commentValue !== newComment) {
                 const adjustedCursorPosition = cursorPosition !== undefined && cursorPosition !== null ? cursorPosition + textVSOffset : undefined;
                 const position = Math.max((selection.end ?? 0) + (newComment.length - commentRef.current.length), adjustedCursorPosition ?? 0);
@@ -484,13 +484,13 @@ function ComposerWithSuggestions({
             preferredLocale,
             preferredSkinTone,
             reportID,
-            setIsCommentEmpty,
             suggestionsRef,
             raiseIsScrollLikelyLayoutTriggered,
             debouncedSaveReportComment,
             selection?.end,
             selection?.start,
             currentUserAccountID,
+            setText,
         ],
     );
 
@@ -590,7 +590,6 @@ function ComposerWithSuggestions({
                 syncSelectionWithOnChangeTextRef.current = null;
 
                 // ensure that selection is set imperatively after all state changes are effective
-                // eslint-disable-next-line @typescript-eslint/no-deprecated
                 InteractionManager.runAfterInteractions(() => {
                     // note: this implementation is only available on non-web RN, thus the wrapping
                     // 'if' block contains a redundant (since the ref is only used on iOS) platform check
@@ -662,7 +661,6 @@ function ComposerWithSuggestions({
         }
         delayedAutoFocusRouteKeyRef.current = route.key;
 
-        // eslint-disable-next-line @typescript-eslint/no-deprecated
         const task = InteractionManager.runAfterInteractions(() => {
             focus(true);
         });
@@ -673,12 +671,24 @@ function ComposerWithSuggestions({
     }, [focus, route.key, shouldAutoFocus, shouldDelayAutoFocus]);
 
     /**
+     * Tracks whether there is a composer input inside the side panel on the screen.
+     */
+    const handleSidePanelFocus = useCallback(() => {
+        if (!isInSidePanel) {
+            ReportActionComposeFocusManager.sidePanelComposerRef.current = null;
+        } else {
+            ReportActionComposeFocusManager.sidePanelComposerRef.current = textInputRef.current;
+        }
+    }, [isInSidePanel]);
+
+    /**
      * Set focus callback
      * @param shouldTakeOverFocus - Whether this composer should gain focus priority
      */
     const setUpComposeFocusManager = useCallback(
         (shouldTakeOverFocus = false) => {
             ReportActionComposeFocusManager.onComposerFocus((shouldFocusForNonBlurInputOnTapOutside = false) => {
+                handleSidePanelFocus();
                 if ((!willBlurTextInputOnTapOutside && !shouldFocusForNonBlurInputOnTapOutside) || !isFocused || !isSidePanelHiddenOrLargeScreen) {
                     return;
                 }
@@ -686,7 +696,7 @@ function ComposerWithSuggestions({
                 focus(true);
             }, shouldTakeOverFocus);
         },
-        [focus, isFocused, isSidePanelHiddenOrLargeScreen],
+        [focus, isFocused, isSidePanelHiddenOrLargeScreen, handleSidePanelFocus],
     );
 
     /**
@@ -786,6 +796,11 @@ function ComposerWithSuggestions({
             return;
         }
 
+        // Do not focus side panels composer if it wasn't focused before
+        if (isInSidePanel && !ReportActionComposeFocusManager.sidePanelComposerRef.current) {
+            return;
+        }
+
         // Do not focus the composer if the Side Panel is visible
         if (!isSidePanelHiddenOrLargeScreen) {
             return;
@@ -803,7 +818,7 @@ function ComposerWithSuggestions({
             return;
         }
         focus(true);
-    }, [focus, prevIsFocused, editFocused, prevIsModalVisible, isFocused, modal?.isVisible, isNextModalWillOpenRef, shouldAutoFocus, isSidePanelHiddenOrLargeScreen]);
+    }, [focus, prevIsFocused, editFocused, prevIsModalVisible, isFocused, modal?.isVisible, isNextModalWillOpenRef, shouldAutoFocus, isSidePanelHiddenOrLargeScreen, isInSidePanel]);
 
     useEffect(() => {
         // Scrolls the composer to the bottom and sets the selection to the end, so that longer drafts are easier to edit
@@ -902,10 +917,10 @@ function ComposerWithSuggestions({
     );
 
     const handleFocus = useCallback(() => {
-        // The last composer that had focus should re-gain focus
-        setUpComposeFocusManager(true);
+        handleSidePanelFocus();
+        setUpComposeFocusManager(!isInSidePanel);
         onFocus();
-    }, [onFocus, setUpComposeFocusManager]);
+    }, [onFocus, setUpComposeFocusManager, handleSidePanelFocus, isInSidePanel]);
 
     // When using the suggestions box (Suggestions) we need to imperatively
     // set the cursor to the end of the suggestion/mention after it's selected.
@@ -1006,4 +1021,4 @@ function ComposerWithSuggestions({
 
 export default memo(ComposerWithSuggestions);
 
-export type {ComposerWithSuggestionsProps, ComposerRef};
+export type {ComposerRef};

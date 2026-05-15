@@ -69,9 +69,10 @@ const FAKE_UNREPORTED_REPORT_ID = CONST.REPORT.UNREPORTED_REPORT_ID;
 const renderMoneyRequestConfirmationListFooter = (transaction: Transaction) => {
     const defaultProps = {
         action: CONST.IOU.ACTION.CREATE,
-        currency: 'USD',
+        distanceRateCurrency: 'USD',
         didConfirm: false,
         distance: 0,
+        amount: 10000,
         formattedAmount: '100',
         formattedAmountPerAttendee: '50',
         formError: '',
@@ -126,11 +127,12 @@ const renderMoneyRequestConfirmationListFooter = (transaction: Transaction) => {
         isTimeRequest: false,
         showMoreFields: false,
         setShowMoreFields: jest.fn(),
+        clearFormErrors: jest.fn(),
+        setFormError: jest.fn(),
     };
     return render(
         <ComposeProviders components={[OnyxListItemProvider, LocaleContextProvider]}>
             <ScreenWrapper testID="MoneyRequestConfirmationListFooter">
-                {/* eslint-disable-next-line react/jsx-props-no-spreading */}
                 <MoneyRequestConfirmationListFooter {...defaultProps} />
             </ScreenWrapper>
         </ComposeProviders>,
